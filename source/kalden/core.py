@@ -12,6 +12,8 @@ import chardet
 import shutil
 from pathlib import Path
 
+def hello(name: str) -> str:
+    return f"Hello, {name}!"
 
 # -------------------------  DIRECTORY  ------------------------------------
 def ensure_dir_exists(dir_path: str | os.PathLike) -> None:
