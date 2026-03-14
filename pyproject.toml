@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "alden"
+name = "kalden"
 version = "0.1.0"
 description = "A small reusable Python library"
 readme = "README.md"
@@ -14,7 +14,7 @@ authors = [
 dependencies = []
 
 [tool.setuptools]
-package-dir = {"" = "src"}
+package-dir = {"" = "source"}
 
 [tool.setuptools.packages.find]
-where = ["src"]
+where = ["source"]
