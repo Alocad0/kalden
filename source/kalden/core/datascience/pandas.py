@@ -288,8 +288,13 @@ class DataFrameUtils:
                 "max_consecutive_nans": int(max_gap),
                 "max_gap_start": max_start,
                 "max_gap_end": max_end,
-                "max_gap_duration_days": get_max_gap_duration(max_start, max_end),
             }
+
+            if isinstance(df.index, pd.DatetimeIndex):
+                summary[col]["max_gap_duration_days"] = get_max_gap_duration(
+                    max_start,
+                    max_end,
+                )
 
         return pd.DataFrame(summary).T
 
