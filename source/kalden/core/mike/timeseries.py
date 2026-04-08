@@ -1,4 +1,4 @@
-"""Utilities for reading, validating, and rewriting MIKE dfs0 time series.
+"""Utilities for reading, validating, rewriting, and inspecting MIKE dfs0 time series.
 
 This module wraps the current public ``mikeio`` dfs0 workflow:
 
@@ -7,6 +7,13 @@ This module wraps the current public ``mikeio`` dfs0 workflow:
 * ``Dataset.to_dataframe(..., round_time=False)`` and ``mikeio.from_pandas(...)``
   when rebuilding a file with explicit timestamps and preserved item metadata
 * ``Dataset.to_dfs()`` for writing
+
+It also provides EUM catalogue utilities that do not require a dfs0 file:
+
+* enumerate all available ``EUMType`` and ``EUMUnit`` values exposed by ``mikeio``
+* search EUM types programmatically with ``mikeio.EUMType.search(...)``
+* expand each EUM type to all valid units
+* return the result as a pandas ``DataFrame`` by default
 
 The implementation intentionally avoids the old script-style pattern of hard-coded
 paths and top-level execution.
@@ -21,6 +28,7 @@ from pathlib import Path
 import tempfile
 
 import mikeio
+import pandas as pd
 
 PathLike = str | OsPathLike[str]
 
@@ -28,7 +36,7 @@ __all__ = ["Dfs0"]
 
 
 class Dfs0:
-    """Convenience wrapper for common dfs0 file operations.
+    """Convenience wrapper for common dfs0 file and EUM operations.
 
     Parameters
     ----------
@@ -94,6 +102,11 @@ class Dfs0:
             Either a single dfs0 file or a directory containing dfs0 files.
         recursive : bool, default True
             If ``True``, search subdirectories recursively.
+
+        Returns
+        -------
+        list[pathlib.Path]
+            Sorted list of dfs0 files.
         """
         root_path = cls._as_path(root)
         if root_path.is_file():
@@ -112,6 +125,266 @@ class Dfs0:
         path_text = str(path).lower()
         return any(token in path_text for token in exclude_substrings)
 
+    @staticmethod
+    def iter_eum_types() -> list[mikeio.EUMType]:
+        """Return all EUM types exposed by ``mikeio`` in deterministic order.
+
+        The enumeration is built dynamically from ``mikeio.EUMType`` so it does
+        not depend on a dfs0 file being available.
+
+        Returns
+        -------
+        list[mikeio.EUMType]
+            All discovered EUM types sorted by display name.
+
+        Examples
+        --------
+        >>> eum_types = Dfs0.iter_eum_types()
+        >>> first = eum_types[0]
+        >>> print(first)
+        >>> print(first.name)
+        >>> print(first.display_name)
+        """
+        eum_types: list[mikeio.EUMType] = []
+
+        for name in dir(mikeio.EUMType):
+            if name.startswith("_"):
+                continue
+            value = getattr(mikeio.EUMType, name)
+            if isinstance(value, mikeio.EUMType):
+                eum_types.append(value)
+
+        return sorted(eum_types, key=lambda item: item.display_name.lower())
+
+    @staticmethod
+    def iter_eum_units() -> list[mikeio.EUMUnit]:
+        """Return all EUM units exposed by ``mikeio`` in deterministic order.
+
+        Returns
+        -------
+        list[mikeio.EUMUnit]
+            All discovered EUM units sorted by display name.
+
+        Examples
+        --------
+        >>> eum_units = Dfs0.iter_eum_units()
+        >>> first = eum_units[0]
+        >>> print(first)
+        >>> print(first.name)
+        >>> print(first.display_name)
+        """
+        eum_units: list[mikeio.EUMUnit] = []
+
+        for name in dir(mikeio.EUMUnit):
+            if name.startswith("_"):
+                continue
+            value = getattr(mikeio.EUMUnit, name)
+            if isinstance(value, mikeio.EUMUnit):
+                eum_units.append(value)
+
+        return sorted(eum_units, key=lambda item: item.display_name.lower())
+
+    @staticmethod
+    def _build_eum_record(
+        eum_type: mikeio.EUMType,
+        eum_unit: mikeio.EUMUnit,
+        *,
+        include_objects: bool = False,
+    ) -> dict[str, object]:
+        """Build one serializable record for an EUM type/unit pair.
+
+        Parameters
+        ----------
+        eum_type : mikeio.EUMType
+            EUM type object.
+        eum_unit : mikeio.EUMUnit
+            EUM unit object valid for ``eum_type``.
+        include_objects : bool, default False
+            If ``True``, include the raw ``EUMType`` and ``EUMUnit`` objects in
+            the returned record.
+
+        Returns
+        -------
+        dict[str, object]
+            Dictionary containing code-oriented names, display labels, and
+            printable string representations.
+
+        Notes
+        -----
+        The following fields expose the type/unit in different forms:
+
+        * ``type_name`` / ``unit_name``:
+          enum-style identifiers such as ``Temperature`` or ``degree_Kelvin``
+        * ``type_display_name`` / ``unit_display_name``:
+          user-friendly labels from MIKE IO
+        * ``type_string`` / ``unit_string``:
+          ``str(...)`` output for convenient printing or logging
+
+        Examples
+        --------
+        >>> record = Dfs0._build_eum_record(
+        ...     mikeio.EUMType.Temperature,
+        ...     mikeio.EUMUnit.degree_Celsius,
+        ... )
+        >>> record["type_name"]
+        'Temperature'
+        >>> record["type_display_name"]
+        'Temperature'
+        >>> record["type_string"]
+        >>> record["unit_name"]
+        'degree_Celsius'
+        >>> record["unit_display_name"]
+        'degree Celsius'
+        >>> record["unit_string"]
+        """
+        record: dict[str, object] = {
+            "type_name": getattr(eum_type, "name", str(eum_type)),
+            "type_display_name": eum_type.display_name,
+            "type_string": str(eum_type),
+            "unit_name": getattr(eum_unit, "name", str(eum_unit)),
+            "unit_display_name": eum_unit.display_name,
+            "unit_string": str(eum_unit),
+        }
+
+        if include_objects:
+            record["type"] = eum_type
+            record["unit"] = eum_unit
+
+        return record
+
+    @classmethod
+    def eum_catalog(
+        cls,
+        pattern: str | None = None,
+        *,
+        as_dataframe: bool = True,
+        include_objects: bool = False,
+    ) -> pd.DataFrame | list[dict[str, object]]:
+        """Return the MIKE IO EUM type-to-unit catalogue.
+
+        This utility does not require a dfs0 file. It can either:
+
+        * search matching EUM types with ``mikeio.EUMType.search(pattern)``, or
+        * enumerate every available EUM type exposed by ``mikeio``
+
+        and then expand each type to all valid units.
+
+        Parameters
+        ----------
+        pattern : str | None, optional
+            Case-insensitive pattern used to filter EUM types. If omitted, the
+            full EUM catalogue is returned.
+        as_dataframe : bool, default True
+            If ``True``, return a pandas ``DataFrame``. If ``False``, return a
+            list of dictionaries.
+        include_objects : bool, default False
+            If ``True``, also include the raw ``EUMType`` and ``EUMUnit`` objects
+            in each record.
+
+        Returns
+        -------
+        pandas.DataFrame | list[dict[str, object]]
+            Type/unit combinations, including both machine-oriented identifiers
+            and human-readable string forms.
+
+        Examples
+        --------
+        Return the full catalogue as a DataFrame:
+
+        >>> df = Dfs0.eum_catalog()
+
+        Search only wind-related EUM types:
+
+        >>> wind_df = Dfs0.eum_catalog("wind")
+
+        Return raw objects as dictionaries:
+
+        >>> records = Dfs0.eum_catalog("wind", as_dataframe=False, include_objects=True)
+        >>> first = records[0]
+        >>> print(first["type"])
+        >>> print(first["type"].name)
+        >>> print(first["type"].display_name)
+        >>> print(first["unit"])
+        >>> print(first["unit"].name)
+        >>> print(first["unit"].display_name)
+        """
+        if pattern is None:
+            eum_types = cls.iter_eum_types()
+        else:
+            normalized = pattern.strip()
+            if not normalized:
+                raise ValueError("pattern must be a non-empty string.")
+            eum_types = sorted(
+                mikeio.EUMType.search(normalized),
+                key=lambda item: item.display_name.lower(),
+            )
+
+        rows: list[dict[str, object]] = []
+        for eum_type in eum_types:
+            for eum_unit in eum_type.units:
+                rows.append(
+                    cls._build_eum_record(
+                        eum_type,
+                        eum_unit,
+                        include_objects=include_objects,
+                    )
+                )
+
+        if as_dataframe:
+            return pd.DataFrame(rows)
+
+        return rows
+
+    @classmethod
+    def search_eum_types(
+        cls,
+        pattern: str,
+        *,
+        as_dataframe: bool = True,
+        include_objects: bool = False,
+    ) -> pd.DataFrame | list[dict[str, object]]:
+        """Search EUM types by name and expand each match to valid units.
+
+        This is a convenience wrapper around :meth:`eum_catalog` for the common
+        use case corresponding to:
+
+        ``mikeio.EUMType.search("wind")``
+
+        Parameters
+        ----------
+        pattern : str
+            Case-insensitive search pattern.
+        as_dataframe : bool, default True
+            If ``True``, return a pandas ``DataFrame``.
+        include_objects : bool, default False
+            If ``True``, include the raw ``EUMType`` and ``EUMUnit`` objects in
+            each returned record.
+
+        Returns
+        -------
+        pandas.DataFrame | list[dict[str, object]]
+            Matching EUM type/unit combinations.
+
+        Examples
+        --------
+        >>> df = Dfs0.search_eum_types("wind")
+        >>> print(df[["type_display_name", "unit_display_name"]])
+
+        >>> records = Dfs0.search_eum_types(
+        ...     "wind",
+        ...     as_dataframe=False,
+        ...     include_objects=True,
+        ... )
+        >>> first = records[0]
+        >>> print(first["type_string"])
+        >>> print(first["unit_string"])
+        """
+        return cls.eum_catalog(
+            pattern=pattern,
+            as_dataframe=as_dataframe,
+            include_objects=include_objects,
+        )
+
     def open(self, path: PathLike | None = None):
         """Open a dfs0 file with ``mikeio.open`` and return the header object."""
         source = self._resolve_source(path, self.path)
@@ -125,7 +398,25 @@ class Dfs0:
         time=None,
         keepdims: bool = False,
     ):
-        """Read a dfs0 file into a ``mikeio.Dataset``."""
+        """Read a dfs0 file into a ``mikeio.Dataset``.
+
+        Parameters
+        ----------
+        path : str | os.PathLike | None, optional
+            Path to the source dfs0 file. If omitted, the stored instance path is
+            used.
+        items : optional
+            Item selection forwarded to ``mikeio.read``.
+        time : optional
+            Time selection forwarded to ``mikeio.read``.
+        keepdims : bool, default False
+            Forwarded to ``mikeio.read``.
+
+        Returns
+        -------
+        mikeio.Dataset
+            Loaded dataset.
+        """
         source = self._resolve_source(path, self.path)
         return mikeio.read(source, items=items, time=time, keepdims=keepdims)
 
@@ -136,7 +427,22 @@ class Dfs0:
         unit_in_name: bool = False,
         round_time: str | bool = "ms",
     ):
-        """Read a dfs0 file and return a pandas ``DataFrame``."""
+        """Read a dfs0 file and return a pandas ``DataFrame``.
+
+        Parameters
+        ----------
+        path : str | os.PathLike | None, optional
+            Source dfs0 file.
+        unit_in_name : bool, default False
+            Forwarded to ``Dataset.to_dataframe``.
+        round_time : str | bool, default "ms"
+            Forwarded to ``Dataset.to_dataframe``.
+
+        Returns
+        -------
+        pandas.DataFrame
+            DataFrame representation of the dfs0 dataset.
+        """
         dataset = self.read(path)
         return dataset.to_dataframe(unit_in_name=unit_in_name, round_time=round_time)
 
@@ -145,6 +451,16 @@ class Dfs0:
 
         The result is a ``pandas.DatetimeIndex`` containing every duplicated
         timestamp occurrence (``keep=False``).
+
+        Parameters
+        ----------
+        path : str | os.PathLike | None, optional
+            Source dfs0 file.
+
+        Returns
+        -------
+        pandas.DatetimeIndex
+            Duplicate timestamps.
         """
         dataset = self.read(path)
         return dataset.time[dataset.time.duplicated(keep=False)]
@@ -158,11 +474,26 @@ class Dfs0:
     ):
         """Validate timestamp ordering and uniqueness.
 
+        Parameters
+        ----------
+        path : str | os.PathLike | None, optional
+            Source dfs0 file.
+        require_sorted : bool, default True
+            Require timestamps to be monotonically increasing.
+        require_unique : bool, default True
+            Require timestamps to be unique.
+
         Returns
         -------
         mikeio.Dataset
             The loaded dataset, so validation and downstream work can share the
             same read operation.
+
+        Raises
+        ------
+        ValueError
+            If the file has no time steps, unsorted timestamps, or duplicate
+            timestamps according to the selected checks.
         """
         source = self._resolve_source(path, self.path)
         dataset = self.read(source)
@@ -211,6 +542,11 @@ class Dfs0:
             Validate timestamp ordering and uniqueness before writing.
         **kwargs
             Additional keyword arguments forwarded to ``Dataset.to_dfs()``.
+
+        Returns
+        -------
+        pathlib.Path
+            Path to the written dfs0 file.
         """
         source = self._resolve_source(None, self.path)
         target = self._resolve_destination(source, destination, overwrite)
@@ -243,9 +579,33 @@ class Dfs0:
 
         Parameters
         ----------
+        destination : str | os.PathLike | None, optional
+            Output path. If omitted, the source file is replaced in place.
+        overwrite : bool, default False
+            Allow overwriting an existing output file when ``destination`` differs
+            from the source.
+        items : sequence, optional
+            Replacement ``mikeio.ItemInfo`` sequence.
+        title : str | None, optional
+            Optional dfs title.
+        validate_timestamps : bool, default True
+            Validate timestamp ordering and uniqueness before writing.
         require_non_equidistant : bool, default True
             If ``True``, raise an error when the rewritten file still has an
             equidistant time axis.
+        **kwargs
+            Additional keyword arguments forwarded to :meth:`rewrite`.
+
+        Returns
+        -------
+        pathlib.Path
+            Path to the rewritten dfs0 file.
+
+        Raises
+        ------
+        RuntimeError
+            If ``require_non_equidistant`` is ``True`` and the written file still
+            has an equidistant time axis.
         """
         source = self._resolve_source(None, self.path)
         target = self._resolve_destination(source, destination, overwrite)
@@ -321,6 +681,11 @@ class Dfs0:
         **kwargs
             Additional keyword arguments forwarded to
             :meth:`convert_to_nonequidistant`.
+
+        Returns
+        -------
+        list[pathlib.Path]
+            Paths to converted files.
         """
         exclusions = tuple(token.lower() for token in (exclude_substrings or ()))
         converted: list[Path] = []
@@ -347,7 +712,22 @@ class Dfs0:
         recursive: bool = True,
         exclude_substrings: Iterable[str] | None = None,
     ) -> dict[Path, list]:
-        """Scan one file or a directory tree for duplicate timestamps."""
+        """Scan one file or a directory tree for duplicate timestamps.
+
+        Parameters
+        ----------
+        root : str | os.PathLike
+            A dfs0 file or a directory containing dfs0 files.
+        recursive : bool, default True
+            Search subdirectories when ``root`` is a directory.
+        exclude_substrings : iterable of str, optional
+            Case-insensitive substrings used to skip matching paths.
+
+        Returns
+        -------
+        dict[pathlib.Path, list]
+            Mapping from dfs0 file path to duplicate timestamps.
+        """
         exclusions = tuple(token.lower() for token in (exclude_substrings or ()))
         findings: dict[Path, list] = {}
 
