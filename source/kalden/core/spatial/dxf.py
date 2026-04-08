@@ -137,3 +137,36 @@ class DXFFile:
 
         except Exception as e:
             raise
+
+    def to_geodataframes(self):
+        """Return extracted features as a dict of GeoDataFrames."""
+        if not hasattr(self, "features"):
+            raise ValueError(
+                "No features extracted yet. Run extract_features(...) first."
+            )
+        return self.features
+
+    def to_geodataframe(self, feature_types=None):
+        """
+        Return one merged GeoDataFrame with all requested feature types.
+        """
+        if not hasattr(self, "features"):
+            raise ValueError(
+                "No features extracted yet. Run extract_features(...) first."
+            )
+
+        if feature_types is None:
+            feature_types = list(self.features.keys())
+
+        frames = []
+        for feature_type in feature_types:
+            if feature_type in self.features:
+                gdf = self.features[feature_type].copy()
+                gdf["feature_type"] = feature_type
+                frames.append(gdf)
+
+        if not frames:
+            return gpd.GeoDataFrame(geometry=[], crs=self.crs)
+
+        merged = pd.concat(frames, ignore_index=True)
+        return gpd.GeoDataFrame(merged, geometry="geometry", crs=self.crs)
