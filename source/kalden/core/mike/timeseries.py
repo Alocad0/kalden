@@ -32,11 +32,280 @@ import pandas as pd
 
 PathLike = str | OsPathLike[str]
 
-__all__ = ["Dfs0"]
+__all__ = ["EUM", "Dfs0"]
+
+
+class EUM:
+    """Utilities for inspecting MIKE IO EUM types and units.
+
+    This helper class is intentionally independent from any specific dfs format
+    so it can be used with dfs0, dfs2, dfs3, or any other workflow relying on
+    ``mikeio.EUMType`` and ``mikeio.EUMUnit``.
+    """
+
+    @staticmethod
+    def iter_eum_types() -> list[mikeio.EUMType]:
+        """Return all EUM types exposed by ``mikeio`` in deterministic order.
+
+        The enumeration is built dynamically from ``mikeio.EUMType`` and does
+        not depend on a dfs file being available.
+
+        Returns
+        -------
+        list[mikeio.EUMType]
+            All discovered EUM types sorted by display name.
+
+        Examples
+        --------
+        >>> eum_types = EUM.iter_eum_types()
+        >>> first = eum_types[0]
+        >>> print(first)
+        >>> print(first.name)
+        >>> print(first.display_name)
+        """
+        eum_types: list[mikeio.EUMType] = []
+
+        for name in dir(mikeio.EUMType):
+            if name.startswith("_"):
+                continue
+            value = getattr(mikeio.EUMType, name)
+            if isinstance(value, mikeio.EUMType):
+                eum_types.append(value)
+
+        return sorted(eum_types, key=lambda item: item.display_name.lower())
+
+    @staticmethod
+    def iter_eum_units() -> list[mikeio.EUMUnit]:
+        """Return all EUM units exposed by ``mikeio`` in deterministic order.
+
+        Returns
+        -------
+        list[mikeio.EUMUnit]
+            All discovered EUM units sorted by display name.
+
+        Examples
+        --------
+        >>> eum_units = EUM.iter_eum_units()
+        >>> first = eum_units[0]
+        >>> print(first)
+        >>> print(first.name)
+        >>> print(first.display_name)
+        """
+        eum_units: list[mikeio.EUMUnit] = []
+
+        for name in dir(mikeio.EUMUnit):
+            if name.startswith("_"):
+                continue
+            value = getattr(mikeio.EUMUnit, name)
+            if isinstance(value, mikeio.EUMUnit):
+                eum_units.append(value)
+
+        return sorted(eum_units, key=lambda item: item.display_name.lower())
+
+    @staticmethod
+    def _build_eum_record(
+        eum_type: mikeio.EUMType,
+        eum_unit: mikeio.EUMUnit,
+        *,
+        include_objects: bool = False,
+    ) -> dict[str, object]:
+        """Build one serializable record for an EUM type/unit pair.
+
+        Parameters
+        ----------
+        eum_type : mikeio.EUMType
+            EUM type object.
+        eum_unit : mikeio.EUMUnit
+            EUM unit object valid for ``eum_type``.
+        include_objects : bool, default False
+            If ``True``, include the raw ``EUMType`` and ``EUMUnit`` objects in
+            the returned record.
+
+        Returns
+        -------
+        dict[str, object]
+            Dictionary containing code-oriented names, display labels, and
+            printable string representations.
+
+        Notes
+        -----
+        The following fields expose the type/unit in different forms:
+
+        * ``type_name`` / ``unit_name``:
+          enum-style identifiers such as ``Temperature`` or ``degree_Kelvin``
+        * ``type_display_name`` / ``unit_display_name``:
+          user-friendly labels from MIKE IO
+        * ``type_string`` / ``unit_string``:
+          ``str(...)`` output for convenient printing or logging
+
+        Examples
+        --------
+        >>> record = EUM._build_eum_record(
+        ...     mikeio.EUMType.Temperature,
+        ...     mikeio.EUMUnit.degree_Celsius,
+        ... )
+        >>> record["type_name"]
+        'Temperature'
+        >>> record["type_display_name"]
+        'Temperature'
+        >>> record["type_string"]
+        >>> record["unit_name"]
+        'degree_Celsius'
+        >>> record["unit_display_name"]
+        'degree Celsius'
+        >>> record["unit_string"]
+        """
+        record: dict[str, object] = {
+            "type_name": getattr(eum_type, "name", str(eum_type)),
+            "type_display_name": eum_type.display_name,
+            "type_string": str(eum_type),
+            "unit_name": getattr(eum_unit, "name", str(eum_unit)),
+            "unit_display_name": eum_unit.display_name,
+            "unit_string": str(eum_unit),
+        }
+
+        if include_objects:
+            record["type"] = eum_type
+            record["unit"] = eum_unit
+
+        return record
+
+    @classmethod
+    def catalog(
+        cls,
+        pattern: str | None = None,
+        *,
+        as_dataframe: bool = True,
+        include_objects: bool = False,
+    ) -> pd.DataFrame | list[dict[str, object]]:
+        """Return the MIKE IO EUM type-to-unit catalogue.
+
+        This utility does not require a dfs file. It can either:
+
+        * search matching EUM types with ``mikeio.EUMType.search(pattern)``, or
+        * enumerate every available EUM type exposed by ``mikeio``
+
+        and then expand each type to all valid units.
+
+        Parameters
+        ----------
+        pattern : str | None, optional
+            Case-insensitive pattern used to filter EUM types. If omitted, the
+            full EUM catalogue is returned.
+        as_dataframe : bool, default True
+            If ``True``, return a pandas ``DataFrame``. If ``False``, return a
+            list of dictionaries.
+        include_objects : bool, default False
+            If ``True``, also include the raw ``EUMType`` and ``EUMUnit`` objects
+            in each record.
+
+        Returns
+        -------
+        pandas.DataFrame | list[dict[str, object]]
+            Type/unit combinations, including both machine-oriented identifiers
+            and human-readable string forms.
+
+        Examples
+        --------
+        Return the full catalogue as a DataFrame:
+
+        >>> df = EUM.catalog()
+
+        Search only wind-related EUM types:
+
+        >>> wind_df = EUM.catalog("wind")
+
+        Return raw objects as dictionaries:
+
+        >>> records = EUM.catalog("wind", as_dataframe=False, include_objects=True)
+        >>> first = records[0]
+        >>> print(first["type"])
+        >>> print(first["type"].name)
+        >>> print(first["type"].display_name)
+        >>> print(first["unit"])
+        >>> print(first["unit"].name)
+        >>> print(first["unit"].display_name)
+        """
+        if pattern is None:
+            eum_types = cls.iter_eum_types()
+        else:
+            normalized = pattern.strip()
+            if not normalized:
+                raise ValueError("pattern must be a non-empty string.")
+            eum_types = sorted(
+                mikeio.EUMType.search(normalized),
+                key=lambda item: item.display_name.lower(),
+            )
+
+        rows: list[dict[str, object]] = []
+        for eum_type in eum_types:
+            for eum_unit in eum_type.units:
+                rows.append(
+                    cls._build_eum_record(
+                        eum_type,
+                        eum_unit,
+                        include_objects=include_objects,
+                    )
+                )
+
+        if as_dataframe:
+            return pd.DataFrame(rows)
+
+        return rows
+
+    @classmethod
+    def search(
+        cls,
+        pattern: str,
+        *,
+        as_dataframe: bool = True,
+        include_objects: bool = False,
+    ) -> pd.DataFrame | list[dict[str, object]]:
+        """Search EUM types by name and expand each match to valid units.
+
+        This is a convenience wrapper around :meth:`catalog` for the common use
+        case corresponding to:
+
+        ``mikeio.EUMType.search("wind")``
+
+        Parameters
+        ----------
+        pattern : str
+            Case-insensitive search pattern.
+        as_dataframe : bool, default True
+            If ``True``, return a pandas ``DataFrame``.
+        include_objects : bool, default False
+            If ``True``, include the raw ``EUMType`` and ``EUMUnit`` objects in
+            each returned record.
+
+        Returns
+        -------
+        pandas.DataFrame | list[dict[str, object]]
+            Matching EUM type/unit combinations.
+
+        Examples
+        --------
+        >>> df = EUM.search("wind")
+        >>> print(df[["type_display_name", "unit_display_name"]])
+
+        >>> records = EUM.search(
+        ...     "wind",
+        ...     as_dataframe=False,
+        ...     include_objects=True,
+        ... )
+        >>> first = records[0]
+        >>> print(first["type_string"])
+        >>> print(first["unit_string"])
+        """
+        return cls.catalog(
+            pattern=pattern,
+            as_dataframe=as_dataframe,
+            include_objects=include_objects,
+        )
 
 
 class Dfs0:
-    """Convenience wrapper for common dfs0 file and EUM operations.
+    """Convenience wrapper for common dfs0 file operations.
 
     Parameters
     ----------
@@ -125,132 +394,23 @@ class Dfs0:
         path_text = str(path).lower()
         return any(token in path_text for token in exclude_substrings)
 
-    @staticmethod
-    def iter_eum_types() -> list[mikeio.EUMType]:
-        """Return all EUM types exposed by ``mikeio`` in deterministic order.
+    @classmethod
+    def iter_eum_types(cls) -> list[mikeio.EUMType]:
+        """Return all EUM types exposed by ``mikeio``.
 
-        The enumeration is built dynamically from ``mikeio.EUMType`` so it does
-        not depend on a dfs0 file being available.
-
-        Returns
-        -------
-        list[mikeio.EUMType]
-            All discovered EUM types sorted by display name.
-
-        Examples
-        --------
-        >>> eum_types = Dfs0.iter_eum_types()
-        >>> first = eum_types[0]
-        >>> print(first)
-        >>> print(first.name)
-        >>> print(first.display_name)
+        This wrapper is kept for backward compatibility. New code should call
+        :meth:`EUM.iter_eum_types` directly.
         """
-        eum_types: list[mikeio.EUMType] = []
+        return EUM.iter_eum_types()
 
-        for name in dir(mikeio.EUMType):
-            if name.startswith("_"):
-                continue
-            value = getattr(mikeio.EUMType, name)
-            if isinstance(value, mikeio.EUMType):
-                eum_types.append(value)
+    @classmethod
+    def iter_eum_units(cls) -> list[mikeio.EUMUnit]:
+        """Return all EUM units exposed by ``mikeio``.
 
-        return sorted(eum_types, key=lambda item: item.display_name.lower())
-
-    @staticmethod
-    def iter_eum_units() -> list[mikeio.EUMUnit]:
-        """Return all EUM units exposed by ``mikeio`` in deterministic order.
-
-        Returns
-        -------
-        list[mikeio.EUMUnit]
-            All discovered EUM units sorted by display name.
-
-        Examples
-        --------
-        >>> eum_units = Dfs0.iter_eum_units()
-        >>> first = eum_units[0]
-        >>> print(first)
-        >>> print(first.name)
-        >>> print(first.display_name)
+        This wrapper is kept for backward compatibility. New code should call
+        :meth:`EUM.iter_eum_units` directly.
         """
-        eum_units: list[mikeio.EUMUnit] = []
-
-        for name in dir(mikeio.EUMUnit):
-            if name.startswith("_"):
-                continue
-            value = getattr(mikeio.EUMUnit, name)
-            if isinstance(value, mikeio.EUMUnit):
-                eum_units.append(value)
-
-        return sorted(eum_units, key=lambda item: item.display_name.lower())
-
-    @staticmethod
-    def _build_eum_record(
-        eum_type: mikeio.EUMType,
-        eum_unit: mikeio.EUMUnit,
-        *,
-        include_objects: bool = False,
-    ) -> dict[str, object]:
-        """Build one serializable record for an EUM type/unit pair.
-
-        Parameters
-        ----------
-        eum_type : mikeio.EUMType
-            EUM type object.
-        eum_unit : mikeio.EUMUnit
-            EUM unit object valid for ``eum_type``.
-        include_objects : bool, default False
-            If ``True``, include the raw ``EUMType`` and ``EUMUnit`` objects in
-            the returned record.
-
-        Returns
-        -------
-        dict[str, object]
-            Dictionary containing code-oriented names, display labels, and
-            printable string representations.
-
-        Notes
-        -----
-        The following fields expose the type/unit in different forms:
-
-        * ``type_name`` / ``unit_name``:
-          enum-style identifiers such as ``Temperature`` or ``degree_Kelvin``
-        * ``type_display_name`` / ``unit_display_name``:
-          user-friendly labels from MIKE IO
-        * ``type_string`` / ``unit_string``:
-          ``str(...)`` output for convenient printing or logging
-
-        Examples
-        --------
-        >>> record = Dfs0._build_eum_record(
-        ...     mikeio.EUMType.Temperature,
-        ...     mikeio.EUMUnit.degree_Celsius,
-        ... )
-        >>> record["type_name"]
-        'Temperature'
-        >>> record["type_display_name"]
-        'Temperature'
-        >>> record["type_string"]
-        >>> record["unit_name"]
-        'degree_Celsius'
-        >>> record["unit_display_name"]
-        'degree Celsius'
-        >>> record["unit_string"]
-        """
-        record: dict[str, object] = {
-            "type_name": getattr(eum_type, "name", str(eum_type)),
-            "type_display_name": eum_type.display_name,
-            "type_string": str(eum_type),
-            "unit_name": getattr(eum_unit, "name", str(eum_unit)),
-            "unit_display_name": eum_unit.display_name,
-            "unit_string": str(eum_unit),
-        }
-
-        if include_objects:
-            record["type"] = eum_type
-            record["unit"] = eum_unit
-
-        return record
+        return EUM.iter_eum_units()
 
     @classmethod
     def eum_catalog(
@@ -262,78 +422,14 @@ class Dfs0:
     ) -> pd.DataFrame | list[dict[str, object]]:
         """Return the MIKE IO EUM type-to-unit catalogue.
 
-        This utility does not require a dfs0 file. It can either:
-
-        * search matching EUM types with ``mikeio.EUMType.search(pattern)``, or
-        * enumerate every available EUM type exposed by ``mikeio``
-
-        and then expand each type to all valid units.
-
-        Parameters
-        ----------
-        pattern : str | None, optional
-            Case-insensitive pattern used to filter EUM types. If omitted, the
-            full EUM catalogue is returned.
-        as_dataframe : bool, default True
-            If ``True``, return a pandas ``DataFrame``. If ``False``, return a
-            list of dictionaries.
-        include_objects : bool, default False
-            If ``True``, also include the raw ``EUMType`` and ``EUMUnit`` objects
-            in each record.
-
-        Returns
-        -------
-        pandas.DataFrame | list[dict[str, object]]
-            Type/unit combinations, including both machine-oriented identifiers
-            and human-readable string forms.
-
-        Examples
-        --------
-        Return the full catalogue as a DataFrame:
-
-        >>> df = Dfs0.eum_catalog()
-
-        Search only wind-related EUM types:
-
-        >>> wind_df = Dfs0.eum_catalog("wind")
-
-        Return raw objects as dictionaries:
-
-        >>> records = Dfs0.eum_catalog("wind", as_dataframe=False, include_objects=True)
-        >>> first = records[0]
-        >>> print(first["type"])
-        >>> print(first["type"].name)
-        >>> print(first["type"].display_name)
-        >>> print(first["unit"])
-        >>> print(first["unit"].name)
-        >>> print(first["unit"].display_name)
+        This wrapper is kept for backward compatibility. New code should call
+        :meth:`EUM.catalog` directly.
         """
-        if pattern is None:
-            eum_types = cls.iter_eum_types()
-        else:
-            normalized = pattern.strip()
-            if not normalized:
-                raise ValueError("pattern must be a non-empty string.")
-            eum_types = sorted(
-                mikeio.EUMType.search(normalized),
-                key=lambda item: item.display_name.lower(),
-            )
-
-        rows: list[dict[str, object]] = []
-        for eum_type in eum_types:
-            for eum_unit in eum_type.units:
-                rows.append(
-                    cls._build_eum_record(
-                        eum_type,
-                        eum_unit,
-                        include_objects=include_objects,
-                    )
-                )
-
-        if as_dataframe:
-            return pd.DataFrame(rows)
-
-        return rows
+        return EUM.catalog(
+            pattern=pattern,
+            as_dataframe=as_dataframe,
+            include_objects=include_objects,
+        )
 
     @classmethod
     def search_eum_types(
@@ -345,41 +441,10 @@ class Dfs0:
     ) -> pd.DataFrame | list[dict[str, object]]:
         """Search EUM types by name and expand each match to valid units.
 
-        This is a convenience wrapper around :meth:`eum_catalog` for the common
-        use case corresponding to:
-
-        ``mikeio.EUMType.search("wind")``
-
-        Parameters
-        ----------
-        pattern : str
-            Case-insensitive search pattern.
-        as_dataframe : bool, default True
-            If ``True``, return a pandas ``DataFrame``.
-        include_objects : bool, default False
-            If ``True``, include the raw ``EUMType`` and ``EUMUnit`` objects in
-            each returned record.
-
-        Returns
-        -------
-        pandas.DataFrame | list[dict[str, object]]
-            Matching EUM type/unit combinations.
-
-        Examples
-        --------
-        >>> df = Dfs0.search_eum_types("wind")
-        >>> print(df[["type_display_name", "unit_display_name"]])
-
-        >>> records = Dfs0.search_eum_types(
-        ...     "wind",
-        ...     as_dataframe=False,
-        ...     include_objects=True,
-        ... )
-        >>> first = records[0]
-        >>> print(first["type_string"])
-        >>> print(first["unit_string"])
+        This wrapper is kept for backward compatibility. New code should call
+        :meth:`EUM.search` directly.
         """
-        return cls.eum_catalog(
+        return EUM.search(
             pattern=pattern,
             as_dataframe=as_dataframe,
             include_objects=include_objects,
