@@ -23,6 +23,16 @@ dependencies = [
     "chardet",
 ]
 
+[project.optional-dependencies]
+plot-export = [
+    "kaleido",
+]
+dev = [
+    "pytest",
+    "build",
+    "twine",
+]
+
 [tool.setuptools]
 package-dir = {"" = "source"}
 
