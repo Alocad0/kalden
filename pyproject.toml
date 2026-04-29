@@ -24,12 +24,14 @@ dependencies = [
     "tqdm",
     "networkx",
     "matplotlib",
-    "mikeplus",
 ]
 
 [project.optional-dependencies]
 plot-export = [
     "kaleido",
+]
+mikeplus = [
+    "mikeplus",
 ]
 dev = [
     "pytest",
