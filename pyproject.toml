@@ -31,6 +31,10 @@ plot-export = [
 mikeplus = [
     "mikeplus",
 ]
+widgets = [
+    "ipywidgets",
+    "IPython",
+]
 dev = [
     "pytest",
     "build",
