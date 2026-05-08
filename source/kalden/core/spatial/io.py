@@ -147,33 +147,34 @@ def insert_qml_style_into_gpkg(
     geometry_column=None,
     geometry_type=None,
     owner="",
-):
-      """
-      Insert an existing QML style into a GeoPackage's QGIS layer_styles table.
-      The QML style can be provided either as:
-      - a file path via qml_path
-      - a packaged built-in style via builtin_style
+    ):
+    """
+    Insert an existing QML style into a GeoPackage's QGIS layer_styles table.
+    The QML style can be provided either as:
+    - a file path via qml_path
+    - a packaged built-in style via builtin_style
 
-      Notes:
-          - QGIS-specific, not a GeoPackage standard feature.
-          - Stores QML only. styleSLD is left NULL.
-          - Requires that the target layer already exists in the GeoPackage.
+    Notes:
+        - QGIS-specific, not a GeoPackage standard feature.
+        - Stores QML only. styleSLD is left NULL.
+        - Requires that the target layer already exists in the GeoPackage.
 
-      Args:
-          gpkg_path: path to .gpkg
-          layer_name: target table/layer name in the GeoPackage
-          qml_path: path to existing .qml file
-          style_name: saved style name; defaults to layer_name
-          builtin_style: name of builtin style
-          description: optional description
-          use_as_default: whether QGIS should use this as default style
-          geometry_column: optional; autodetected from gpkg_geometry_columns if omitted
-          geometry_type: optional; autodetected and normalized if omitted
-          owner: optional metadata field
+    Args:
+        gpkg_path: path to .gpkg
+        layer_name: target table/layer name in the GeoPackage
+        qml_path: path to existing .qml file
+        style_name: saved style name; defaults to layer_name
+        builtin_style: name of builtin style
+        description: optional description
+        use_as_default: whether QGIS should use this as default style
+        geometry_column: optional; autodetected from gpkg_geometry_columns if omitted
+        geometry_type: optional; autodetected and normalized if omitted
+        owner: optional metadata field
 
-      Returns:
-          bool
-      """
+    Returns:
+        bool
+    """
+
     # Validate style source
     if qml_path is None and builtin_style is None:
         raise ValueError("Provide either qml_path or builtin_style.")
@@ -213,148 +214,148 @@ def insert_qml_style_into_gpkg(
     con = sqlite3.connect(gpkg_path)
     cur = con.cursor()
 
-      try:
-          # Confirm layer exists
-          cur.execute(
-              """
-              SELECT COUNT(*)
-              FROM gpkg_contents
-              WHERE table_name = ?
-              """,
-              (layer_name,),
-          )
-          if cur.fetchone()[0] == 0:
-              raise ValueError(f"Layer '{layer_name}' not found in GeoPackage")
+    try:
+        # Confirm layer exists
+        cur.execute(
+            """
+            SELECT COUNT(*)
+            FROM gpkg_contents
+            WHERE table_name = ?
+            """,
+            (layer_name,),
+        )
+        if cur.fetchone()[0] == 0:
+            raise ValueError(f"Layer '{layer_name}' not found in GeoPackage")
 
-          # Autodetect geometry column + geometry type
-          if geometry_column is None or geometry_type is None:
-              cur.execute(
-                  """
-                  SELECT column_name, geometry_type_name
-                  FROM gpkg_geometry_columns
-                  WHERE table_name = ?
-                  """,
-                  (layer_name,),
-              )
-              row = cur.fetchone()
-              if row:
-                  if geometry_column is None:
-                      geometry_column = row[0]
-                  if geometry_type is None:
-                      gpkg_geom = (row[1] or "").upper()
-                      if "POINT" in gpkg_geom:
-                          geometry_type = "Point"
-                      elif "LINE" in gpkg_geom:
-                          geometry_type = "Line"
-                      elif "POLYGON" in gpkg_geom:
-                          geometry_type = "Polygon"
-                      else:
-                          geometry_type = None
+        # Autodetect geometry column + geometry type
+        if geometry_column is None or geometry_type is None:
+            cur.execute(
+                """
+                SELECT column_name, geometry_type_name
+                FROM gpkg_geometry_columns
+                WHERE table_name = ?
+                """,
+                (layer_name,),
+            )
+            row = cur.fetchone()
+            if row:
+                if geometry_column is None:
+                    geometry_column = row[0]
+                if geometry_type is None:
+                    gpkg_geom = (row[1] or "").upper()
+                    if "POINT" in gpkg_geom:
+                        geometry_type = "Point"
+                    elif "LINE" in gpkg_geom:
+                        geometry_type = "Line"
+                    elif "POLYGON" in gpkg_geom:
+                        geometry_type = "Polygon"
+                    else:
+                        geometry_type = None
 
-          if geometry_column is None:
-              geometry_column = "geom"
+        if geometry_column is None:
+            geometry_column = "geom"
 
-          # QGIS expects a layer_styles table for DB-backed styles
-          cur.execute(
-              """
-              CREATE TABLE IF NOT EXISTS layer_styles (
-                  id INTEGER PRIMARY KEY AUTOINCREMENT,
-                  f_table_catalog TEXT,
-                  f_table_schema TEXT,
-                  f_table_name TEXT,
-                  f_geometry_column TEXT,
-                  styleName TEXT,
-                  styleQML TEXT,
-                  styleSLD TEXT,
-                  useAsDefault INTEGER,
-                  description TEXT,
-                  owner TEXT,
-                  ui TEXT,
-                  update_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-                  type TEXT
-              )
-              """
-          )
+        # QGIS expects a layer_styles table for DB-backed styles
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS layer_styles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                f_table_catalog TEXT,
+                f_table_schema TEXT,
+                f_table_name TEXT,
+                f_geometry_column TEXT,
+                styleName TEXT,
+                styleQML TEXT,
+                styleSLD TEXT,
+                useAsDefault INTEGER,
+                description TEXT,
+                owner TEXT,
+                ui TEXT,
+                update_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+                type TEXT
+            )
+            """
+        )
 
-          # Optional but useful indexes
-          cur.execute(
-              """
-              CREATE INDEX IF NOT EXISTS idx_layer_styles_lookup
-              ON layer_styles (f_table_name, f_geometry_column, styleName)
-              """
-          )
+        # Optional but useful indexes
+        cur.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_layer_styles_lookup
+            ON layer_styles (f_table_name, f_geometry_column, styleName)
+            """
+        )
 
-          # Only one default style per layer/geometry/type
-          if use_as_default:
-              cur.execute(
-                  """
-                  UPDATE layer_styles
-                  SET useAsDefault = 0
-                  WHERE f_table_name = ?
-                  AND f_geometry_column = ?
-                  AND (type = ? OR (? IS NULL AND type IS NULL))
-                  """,
-                  (layer_name, geometry_column, geometry_type, geometry_type),
-              )
+        # Only one default style per layer/geometry/type
+        if use_as_default:
+            cur.execute(
+                """
+                UPDATE layer_styles
+                SET useAsDefault = 0
+                WHERE f_table_name = ?
+                AND f_geometry_column = ?
+                AND (type = ? OR (? IS NULL AND type IS NULL))
+                """,
+                (layer_name, geometry_column, geometry_type, geometry_type),
+            )
 
-          # Remove existing style of same name for same layer
-          cur.execute(
-              """
-              DELETE FROM layer_styles
-              WHERE f_table_name = ?
-              AND f_geometry_column = ?
-              AND styleName = ?
-              """,
-              (layer_name, geometry_column, style_name),
-          )
+        # Remove existing style of same name for same layer
+        cur.execute(
+            """
+            DELETE FROM layer_styles
+            WHERE f_table_name = ?
+            AND f_geometry_column = ?
+            AND styleName = ?
+            """,
+            (layer_name, geometry_column, style_name),
+        )
 
-          # For SQLite-family providers, QGIS commonly stores datasource identity
-          # fields in layer_styles. Using absolute gpkg path is the safest guess.
-          f_table_catalog = os.path.abspath(gpkg_path)
-          f_table_schema = ""
+        # For SQLite-family providers, QGIS commonly stores datasource identity
+        # fields in layer_styles. Using absolute gpkg path is the safest guess.
+        f_table_catalog = os.path.abspath(gpkg_path)
+        f_table_schema = ""
 
-          cur.execute(
-              """
-              INSERT INTO layer_styles (
-                  f_table_catalog,
-                  f_table_schema,
-                  f_table_name,
-                  f_geometry_column,
-                  styleName,
-                  styleQML,
-                  styleSLD,
-                  useAsDefault,
-                  description,
-                  owner,
-                  ui,
-                  update_time,
-                  type
-              )
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-              """,
-              (
-                  f_table_catalog,
-                  f_table_schema,
-                  layer_name,
-                  geometry_column,
-                  style_name,
-                  qml_text,
-                  None,  # no SLD available
-                  1 if use_as_default else 0,
-                  description,
-                  owner,
-                  None,
-                  datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                  geometry_type,
-              ),
-          )
+        cur.execute(
+            """
+            INSERT INTO layer_styles (
+                f_table_catalog,
+                f_table_schema,
+                f_table_name,
+                f_geometry_column,
+                styleName,
+                styleQML,
+                styleSLD,
+                useAsDefault,
+                description,
+                owner,
+                ui,
+                update_time,
+                type
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                f_table_catalog,
+                f_table_schema,
+                layer_name,
+                geometry_column,
+                style_name,
+                qml_text,
+                None,  # no SLD available
+                1 if use_as_default else 0,
+                description,
+                owner,
+                None,
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                geometry_type,
+            ),
+        )
 
-          con.commit()
-          return True
+        con.commit()
+        return True
 
-      except Exception:
-          con.rollback()
-          raise
+    except Exception:
+        con.rollback()
+        raise
 
-      finally:
-          con.close()
+    finally:
+        con.close()
