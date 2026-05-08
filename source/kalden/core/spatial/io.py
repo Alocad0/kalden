@@ -3,6 +3,8 @@ import fiona
 import geopandas as gpd
 import sqlite3
 from datetime import datetime
+from pathlib import Path
+from importlib.resources import files
 
 def export_gdf(gdf, export_path, layer_name=None, export_file_type="gpkg", overwrite=False):
   """
@@ -134,20 +136,23 @@ def export_gdf(gdf, export_path, layer_name=None, export_file_type="gpkg", overw
       print(f"✗ Export failed: {e}")
       return False
 
-
 def insert_qml_style_into_gpkg(
-      gpkg_path,
-      layer_name,
-      qml_path,
-      style_name=None,
-      description="",
-      use_as_default=True,
-      geometry_column=None,
-      geometry_type=None,
-      owner="",
-  ):
+    gpkg_path,
+    layer_name,
+    qml_path=None,
+    builtin_style=None,
+    style_name=None,
+    description="",
+    use_as_default=True,
+    geometry_column=None,
+    geometry_type=None,
+    owner="",
+):
       """
       Insert an existing QML style into a GeoPackage's QGIS layer_styles table.
+      The QML style can be provided either as:
+      - a file path via qml_path
+      - a packaged built-in style via builtin_style
 
       Notes:
           - QGIS-specific, not a GeoPackage standard feature.
@@ -159,6 +164,7 @@ def insert_qml_style_into_gpkg(
           layer_name: target table/layer name in the GeoPackage
           qml_path: path to existing .qml file
           style_name: saved style name; defaults to layer_name
+          builtin_style: name of builtin style
           description: optional description
           use_as_default: whether QGIS should use this as default style
           geometry_column: optional; autodetected from gpkg_geometry_columns if omitted
@@ -168,19 +174,44 @@ def insert_qml_style_into_gpkg(
       Returns:
           bool
       """
-      if not os.path.exists(gpkg_path):
-          raise FileNotFoundError(f"GeoPackage not found: {gpkg_path}")
+    # Validate style source
+    if qml_path is None and builtin_style is None:
+        raise ValueError("Provide either qml_path or builtin_style.")
 
-      if not os.path.exists(qml_path):
-          raise FileNotFoundError(f"QML not found: {qml_path}")
+    if qml_path is not None and builtin_style is not None:
+        raise ValueError("Provide only one of qml_path or builtin_style, not both.")
 
-      style_name = style_name or layer_name
+    # Read QML from external file
+    if qml_path is not None:
+        qml_path = Path(qml_path)
 
-      with open(qml_path, "r", encoding="utf-8") as f:
-          qml_text = f.read()
+        if not qml_path.exists():
+            raise FileNotFoundError(f"QML not found: {qml_path}")
 
-      con = sqlite3.connect(gpkg_path)
-      cur = con.cursor()
+        qml_text = qml_path.read_text(encoding="utf-8")
+
+        if style_name is None:
+            style_name = qml_path.stem
+
+    # Read QML from package resources
+    else:
+        qml_filename = builtin_style
+
+        if not qml_filename.endswith(".qml"):
+            qml_filename = f"{qml_filename}.qml"
+
+        qml_resource = files("kalden.styles").joinpath(qml_filename)
+
+        if not qml_resource.is_file():
+            raise FileNotFoundError(f"Built-in QML style not found: {qml_filename}")
+
+        qml_text = qml_resource.read_text(encoding="utf-8")
+
+        if style_name is None:
+            style_name = Path(qml_filename).stem
+
+    con = sqlite3.connect(gpkg_path)
+    cur = con.cursor()
 
       try:
           # Confirm layer exists
