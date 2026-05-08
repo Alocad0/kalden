@@ -364,6 +364,42 @@ class DataFrameUtils:
         return summary.T
 
     @staticmethod
+    def convert_numeric_like_columns(
+        df: pd.DataFrame,
+        exclude: list[str] | None = None,
+        copy: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Convert object/string columns to float when all non-null/non-empty
+        values in the column can be converted to numeric.
+        """
+        if copy:
+            df = df.copy()
+
+        if exclude is None:
+            exclude = []
+
+        for col in df.columns:
+            if col in exclude:
+                continue
+
+            if not (
+                pd.api.types.is_object_dtype(df[col])
+                or pd.api.types.is_string_dtype(df[col])
+            ):
+                continue
+
+            cleaned = df[col].replace(r"^\s*$", pd.NA, regex=True)
+            converted = pd.to_numeric(cleaned, errors="coerce")
+
+            had_value = cleaned.notna()
+
+            if converted[had_value].notna().all():
+                df[col] = converted.astype(float)
+
+        return df
+
+    @staticmethod
     def resample(
         df: pd.DataFrame,
         freq: str,
@@ -627,6 +663,13 @@ def df_time_index_summary(df, plot=False):
     """Compatibility wrapper for ``DataFrameUtils.time_index_summary()``."""
     return DataFrameUtils.time_index_summary(df, plot=plot)
 
+def df_convert_numeric_like_columns(df, exclude=None, copy=True):
+    """Compatibility wrapper for ``DataFrameUtils.convert_numeric_like_columns()``."""
+    return DataFrameUtils.convert_numeric_like_columns(
+        df,
+        exclude=exclude,
+        copy=copy,
+    )
 
 def df_resample(
     df,
