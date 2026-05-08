@@ -1,18 +1,18 @@
 <!DOCTYPE qgis PUBLIC 'http://mrcc.com/qgis.dtd' 'SYSTEM'>
-<qgis hasScaleBasedVisibilityFlag="0" autoRefreshTime="0" maxScale="0" simplifyDrawingHints="0" symbologyReferenceScale="-1" readOnly="0" simplifyMaxScale="1" styleCategories="AllStyleCategories" autoRefreshMode="Disabled" simplifyDrawingTol="1" minScale="100000000" labelsEnabled="0" version="3.40.12-Bratislava" simplifyAlgorithm="0" simplifyLocal="1">
+<qgis maxScale="0" hasScaleBasedVisibilityFlag="0" simplifyDrawingTol="1" symbologyReferenceScale="-1" styleCategories="AllStyleCategories" labelsEnabled="0" readOnly="0" simplifyLocal="1" minScale="100000000" autoRefreshTime="0" simplifyDrawingHints="0" autoRefreshMode="Disabled" simplifyMaxScale="1" version="3.40.12-Bratislava" simplifyAlgorithm="0">
   <flags>
     <Identifiable>1</Identifiable>
     <Removable>1</Removable>
     <Searchable>1</Searchable>
     <Private>0</Private>
   </flags>
-  <temporal startField="" endField="" startExpression="" limitMode="0" enabled="0" fixedDuration="0" durationUnit="min" durationField="fid" mode="0" accumulate="0" endExpression="">
+  <temporal mode="0" endField="" durationField="fid" fixedDuration="0" startExpression="" enabled="0" limitMode="0" accumulate="0" endExpression="" durationUnit="min" startField="">
     <fixedRange>
       <start></start>
       <end></end>
     </fixedRange>
   </temporal>
-  <elevation zscale="1" type="IndividualFeatures" binding="Centroid" extrusionEnabled="0" respectLayerSymbol="1" zoffset="0" symbology="Line" showMarkerSymbolInSurfacePlots="0" extrusion="0" clamping="Terrain">
+  <elevation extrusion="0" respectLayerSymbol="1" zscale="1" clamping="Terrain" type="IndividualFeatures" symbology="Line" extrusionEnabled="0" showMarkerSymbolInSurfacePlots="0" zoffset="0" binding="Centroid">
     <data-defined-properties>
       <Option type="Map">
         <Option type="QString" value="" name="name"/>
@@ -21,7 +21,7 @@
       </Option>
     </data-defined-properties>
     <profileLineSymbol>
-      <symbol type="line" clip_to_extent="1" is_animated="0" force_rhr="0" name="" frame_rate="10" alpha="1">
+      <symbol is_animated="0" type="line" alpha="1" frame_rate="10" clip_to_extent="1" name="" force_rhr="0">
         <data_defined_properties>
           <Option type="Map">
             <Option type="QString" value="" name="name"/>
@@ -29,7 +29,7 @@
             <Option type="QString" value="collection" name="type"/>
           </Option>
         </data_defined_properties>
-        <layer id="{102589aa-d0fa-4348-98b4-29266181714a}" enabled="1" locked="0" pass="0" class="SimpleLine">
+        <layer id="{102589aa-d0fa-4348-98b4-29266181714a}" pass="0" enabled="1" class="SimpleLine" locked="0">
           <Option type="Map">
             <Option type="QString" value="0" name="align_dash_pattern"/>
             <Option type="QString" value="square" name="capstyle"/>
@@ -70,7 +70,7 @@
       </symbol>
     </profileLineSymbol>
     <profileFillSymbol>
-      <symbol type="fill" clip_to_extent="1" is_animated="0" force_rhr="0" name="" frame_rate="10" alpha="1">
+      <symbol is_animated="0" type="fill" alpha="1" frame_rate="10" clip_to_extent="1" name="" force_rhr="0">
         <data_defined_properties>
           <Option type="Map">
             <Option type="QString" value="" name="name"/>
@@ -78,7 +78,7 @@
             <Option type="QString" value="collection" name="type"/>
           </Option>
         </data_defined_properties>
-        <layer id="{5076de86-10e7-4373-85a3-c5a6a26d6e5d}" enabled="1" locked="0" pass="0" class="SimpleFill">
+        <layer id="{5076de86-10e7-4373-85a3-c5a6a26d6e5d}" pass="0" enabled="1" class="SimpleFill" locked="0">
           <Option type="Map">
             <Option type="QString" value="3x:0,0,0,0,0,0" name="border_width_map_unit_scale"/>
             <Option type="QString" value="125,139,143,255,rgb:0.49019607843137253,0.54509803921568623,0.5607843137254902,1" name="color"/>
@@ -103,7 +103,7 @@
       </symbol>
     </profileFillSymbol>
     <profileMarkerSymbol>
-      <symbol type="marker" clip_to_extent="1" is_animated="0" force_rhr="0" name="" frame_rate="10" alpha="1">
+      <symbol is_animated="0" type="marker" alpha="1" frame_rate="10" clip_to_extent="1" name="" force_rhr="0">
         <data_defined_properties>
           <Option type="Map">
             <Option type="QString" value="" name="name"/>
@@ -111,7 +111,7 @@
             <Option type="QString" value="collection" name="type"/>
           </Option>
         </data_defined_properties>
-        <layer id="{f9ab714e-e4fa-4d4c-8ff5-85ee00c038e4}" enabled="1" locked="0" pass="0" class="SimpleMarker">
+        <layer id="{f9ab714e-e4fa-4d4c-8ff5-85ee00c038e4}" pass="0" enabled="1" class="SimpleMarker" locked="0">
           <Option type="Map">
             <Option type="QString" value="0" name="angle"/>
             <Option type="QString" value="square" name="cap_style"/>
@@ -144,9 +144,18 @@
       </symbol>
     </profileMarkerSymbol>
   </elevation>
-  <renderer-v2 type="singleSymbol" referencescale="-1" symbollevels="0" enableorderby="0" forceraster="0">
+  <renderer-v2 forceraster="0" attr="NetTypeNo" symbollevels="0" type="categorizedSymbol" referencescale="-1" enableorderby="0">
+    <categories>
+      <category render="true" type="string" value="0" label="Undefined" uuid="{015ecab4-224d-4535-a318-3c9c39ecf846}" symbol="0"/>
+      <category render="true" type="string" value="1" label="Wastewater" uuid="{c857922b-0433-4228-8c9a-904e74b60f53}" symbol="1"/>
+      <category render="true" type="string" value="2" label="Stormwater" uuid="{58cb2e7a-e3ed-448f-9fac-5765e829bba9}" symbol="2"/>
+      <category render="true" type="string" value="3" label="Combined" uuid="{d60282e7-e895-4e7c-affa-c81018410e33}" symbol="3"/>
+      <category render="true" type="string" value="4" label="Rising main" uuid="{d6cd3192-5029-40e2-b7b7-eadfe186cd1e}" symbol="4"/>
+      <category render="true" type="string" value="5" label="Overland flow" uuid="{6f7b7288-324a-44c3-8c14-cb2532d2e40f}" symbol="5"/>
+      <category render="true" type="NULL" value="NULL" label="Else" uuid="{ede5da30-b025-4594-8c16-01fa7b1bd3ce}" symbol="6"/>
+    </categories>
     <symbols>
-      <symbol type="marker" clip_to_extent="1" is_animated="0" force_rhr="0" name="0" frame_rate="10" alpha="1">
+      <symbol is_animated="0" type="marker" alpha="1" frame_rate="10" clip_to_extent="1" name="0" force_rhr="0">
         <data_defined_properties>
           <Option type="Map">
             <Option type="QString" value="" name="name"/>
@@ -154,7 +163,282 @@
             <Option type="QString" value="collection" name="type"/>
           </Option>
         </data_defined_properties>
-        <layer id="{ff9a8fba-1c5b-437f-88df-6ba4a16f0e52}" enabled="1" locked="0" pass="0" class="SimpleMarker">
+        <layer id="{c65f0d9d-029f-4b4e-9160-ebc85fdeb79a}" pass="0" enabled="1" class="SimpleMarker" locked="0">
+          <Option type="Map">
+            <Option type="QString" value="0" name="angle"/>
+            <Option type="QString" value="square" name="cap_style"/>
+            <Option type="QString" value="255,255,255,255,hsv:0.76666666666666672,0,1,1" name="color"/>
+            <Option type="QString" value="1" name="horizontal_anchor_point"/>
+            <Option type="QString" value="bevel" name="joinstyle"/>
+            <Option type="QString" value="circle" name="name"/>
+            <Option type="QString" value="0,0" name="offset"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="offset_map_unit_scale"/>
+            <Option type="QString" value="MM" name="offset_unit"/>
+            <Option type="QString" value="236,117,58,255,rgb:0.92549019607843142,0.45882352941176469,0.22745098039215686,1" name="outline_color"/>
+            <Option type="QString" value="solid" name="outline_style"/>
+            <Option type="QString" value="0.4" name="outline_width"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="outline_width_map_unit_scale"/>
+            <Option type="QString" value="MM" name="outline_width_unit"/>
+            <Option type="QString" value="diameter" name="scale_method"/>
+            <Option type="QString" value="2" name="size"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="size_map_unit_scale"/>
+            <Option type="QString" value="MM" name="size_unit"/>
+            <Option type="QString" value="1" name="vertical_anchor_point"/>
+          </Option>
+          <data_defined_properties>
+            <Option type="Map">
+              <Option type="QString" value="" name="name"/>
+              <Option name="properties"/>
+              <Option type="QString" value="collection" name="type"/>
+            </Option>
+          </data_defined_properties>
+        </layer>
+      </symbol>
+      <symbol is_animated="0" type="marker" alpha="1" frame_rate="10" clip_to_extent="1" name="1" force_rhr="0">
+        <data_defined_properties>
+          <Option type="Map">
+            <Option type="QString" value="" name="name"/>
+            <Option name="properties"/>
+            <Option type="QString" value="collection" name="type"/>
+          </Option>
+        </data_defined_properties>
+        <layer id="{029021c6-a7a5-46b2-bbc7-6318d2f513e6}" pass="0" enabled="1" class="SimpleMarker" locked="0">
+          <Option type="Map">
+            <Option type="QString" value="0" name="angle"/>
+            <Option type="QString" value="square" name="cap_style"/>
+            <Option type="QString" value="255,255,255,255,hsv:0.43055555555555558,0,1,1" name="color"/>
+            <Option type="QString" value="1" name="horizontal_anchor_point"/>
+            <Option type="QString" value="bevel" name="joinstyle"/>
+            <Option type="QString" value="circle" name="name"/>
+            <Option type="QString" value="0,0" name="offset"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="offset_map_unit_scale"/>
+            <Option type="QString" value="MM" name="offset_unit"/>
+            <Option type="QString" value="255,42,42,255,rgb:1,0.16470588235294117,0.16470588235294117,1" name="outline_color"/>
+            <Option type="QString" value="solid" name="outline_style"/>
+            <Option type="QString" value="0.4" name="outline_width"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="outline_width_map_unit_scale"/>
+            <Option type="QString" value="MM" name="outline_width_unit"/>
+            <Option type="QString" value="diameter" name="scale_method"/>
+            <Option type="QString" value="2" name="size"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="size_map_unit_scale"/>
+            <Option type="QString" value="MM" name="size_unit"/>
+            <Option type="QString" value="1" name="vertical_anchor_point"/>
+          </Option>
+          <data_defined_properties>
+            <Option type="Map">
+              <Option type="QString" value="" name="name"/>
+              <Option name="properties"/>
+              <Option type="QString" value="collection" name="type"/>
+            </Option>
+          </data_defined_properties>
+        </layer>
+      </symbol>
+      <symbol is_animated="0" type="marker" alpha="1" frame_rate="10" clip_to_extent="1" name="2" force_rhr="0">
+        <data_defined_properties>
+          <Option type="Map">
+            <Option type="QString" value="" name="name"/>
+            <Option name="properties"/>
+            <Option type="QString" value="collection" name="type"/>
+          </Option>
+        </data_defined_properties>
+        <layer id="{029021c6-a7a5-46b2-bbc7-6318d2f513e6}" pass="0" enabled="1" class="SimpleMarker" locked="0">
+          <Option type="Map">
+            <Option type="QString" value="0" name="angle"/>
+            <Option type="QString" value="square" name="cap_style"/>
+            <Option type="QString" value="255,255,255,255,hsv:0.43055555555555558,0,1,1" name="color"/>
+            <Option type="QString" value="1" name="horizontal_anchor_point"/>
+            <Option type="QString" value="bevel" name="joinstyle"/>
+            <Option type="QString" value="circle" name="name"/>
+            <Option type="QString" value="0,0" name="offset"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="offset_map_unit_scale"/>
+            <Option type="QString" value="MM" name="offset_unit"/>
+            <Option type="QString" value="14,76,249,255,rgb:0.05490196078431372,0.29803921568627451,0.97647058823529409,1" name="outline_color"/>
+            <Option type="QString" value="solid" name="outline_style"/>
+            <Option type="QString" value="0.4" name="outline_width"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="outline_width_map_unit_scale"/>
+            <Option type="QString" value="MM" name="outline_width_unit"/>
+            <Option type="QString" value="diameter" name="scale_method"/>
+            <Option type="QString" value="2" name="size"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="size_map_unit_scale"/>
+            <Option type="QString" value="MM" name="size_unit"/>
+            <Option type="QString" value="1" name="vertical_anchor_point"/>
+          </Option>
+          <data_defined_properties>
+            <Option type="Map">
+              <Option type="QString" value="" name="name"/>
+              <Option name="properties"/>
+              <Option type="QString" value="collection" name="type"/>
+            </Option>
+          </data_defined_properties>
+        </layer>
+      </symbol>
+      <symbol is_animated="0" type="marker" alpha="1" frame_rate="10" clip_to_extent="1" name="3" force_rhr="0">
+        <data_defined_properties>
+          <Option type="Map">
+            <Option type="QString" value="" name="name"/>
+            <Option name="properties"/>
+            <Option type="QString" value="collection" name="type"/>
+          </Option>
+        </data_defined_properties>
+        <layer id="{029021c6-a7a5-46b2-bbc7-6318d2f513e6}" pass="0" enabled="1" class="SimpleMarker" locked="0">
+          <Option type="Map">
+            <Option type="QString" value="0" name="angle"/>
+            <Option type="QString" value="square" name="cap_style"/>
+            <Option type="QString" value="255,255,255,255,hsv:0.43055555555555558,0,1,1" name="color"/>
+            <Option type="QString" value="1" name="horizontal_anchor_point"/>
+            <Option type="QString" value="bevel" name="joinstyle"/>
+            <Option type="QString" value="circle" name="name"/>
+            <Option type="QString" value="0,0" name="offset"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="offset_map_unit_scale"/>
+            <Option type="QString" value="MM" name="offset_unit"/>
+            <Option type="QString" value="176,110,0,255,rgb:0.69019607843137254,0.43137254901960786,0,1" name="outline_color"/>
+            <Option type="QString" value="solid" name="outline_style"/>
+            <Option type="QString" value="0.4" name="outline_width"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="outline_width_map_unit_scale"/>
+            <Option type="QString" value="MM" name="outline_width_unit"/>
+            <Option type="QString" value="diameter" name="scale_method"/>
+            <Option type="QString" value="2" name="size"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="size_map_unit_scale"/>
+            <Option type="QString" value="MM" name="size_unit"/>
+            <Option type="QString" value="1" name="vertical_anchor_point"/>
+          </Option>
+          <data_defined_properties>
+            <Option type="Map">
+              <Option type="QString" value="" name="name"/>
+              <Option name="properties"/>
+              <Option type="QString" value="collection" name="type"/>
+            </Option>
+          </data_defined_properties>
+        </layer>
+      </symbol>
+      <symbol is_animated="0" type="marker" alpha="1" frame_rate="10" clip_to_extent="1" name="4" force_rhr="0">
+        <data_defined_properties>
+          <Option type="Map">
+            <Option type="QString" value="" name="name"/>
+            <Option name="properties"/>
+            <Option type="QString" value="collection" name="type"/>
+          </Option>
+        </data_defined_properties>
+        <layer id="{029021c6-a7a5-46b2-bbc7-6318d2f513e6}" pass="0" enabled="1" class="SimpleMarker" locked="0">
+          <Option type="Map">
+            <Option type="QString" value="0" name="angle"/>
+            <Option type="QString" value="square" name="cap_style"/>
+            <Option type="QString" value="255,255,255,255,hsv:0.43055555555555558,0,1,1" name="color"/>
+            <Option type="QString" value="1" name="horizontal_anchor_point"/>
+            <Option type="QString" value="bevel" name="joinstyle"/>
+            <Option type="QString" value="circle" name="name"/>
+            <Option type="QString" value="0,0" name="offset"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="offset_map_unit_scale"/>
+            <Option type="QString" value="MM" name="offset_unit"/>
+            <Option type="QString" value="209,76,249,255,rgb:0.81960784313725488,0.29803921568627451,0.97647058823529409,1" name="outline_color"/>
+            <Option type="QString" value="solid" name="outline_style"/>
+            <Option type="QString" value="0.4" name="outline_width"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="outline_width_map_unit_scale"/>
+            <Option type="QString" value="MM" name="outline_width_unit"/>
+            <Option type="QString" value="diameter" name="scale_method"/>
+            <Option type="QString" value="2" name="size"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="size_map_unit_scale"/>
+            <Option type="QString" value="MM" name="size_unit"/>
+            <Option type="QString" value="1" name="vertical_anchor_point"/>
+          </Option>
+          <data_defined_properties>
+            <Option type="Map">
+              <Option type="QString" value="" name="name"/>
+              <Option name="properties"/>
+              <Option type="QString" value="collection" name="type"/>
+            </Option>
+          </data_defined_properties>
+        </layer>
+      </symbol>
+      <symbol is_animated="0" type="marker" alpha="1" frame_rate="10" clip_to_extent="1" name="5" force_rhr="0">
+        <data_defined_properties>
+          <Option type="Map">
+            <Option type="QString" value="" name="name"/>
+            <Option name="properties"/>
+            <Option type="QString" value="collection" name="type"/>
+          </Option>
+        </data_defined_properties>
+        <layer id="{029021c6-a7a5-46b2-bbc7-6318d2f513e6}" pass="0" enabled="1" class="SimpleMarker" locked="0">
+          <Option type="Map">
+            <Option type="QString" value="0" name="angle"/>
+            <Option type="QString" value="square" name="cap_style"/>
+            <Option type="QString" value="255,255,255,255,hsv:0.43055555555555558,0,1,1" name="color"/>
+            <Option type="QString" value="1" name="horizontal_anchor_point"/>
+            <Option type="QString" value="bevel" name="joinstyle"/>
+            <Option type="QString" value="circle" name="name"/>
+            <Option type="QString" value="0,0" name="offset"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="offset_map_unit_scale"/>
+            <Option type="QString" value="MM" name="offset_unit"/>
+            <Option type="QString" value="4,169,57,255,rgb:0.01568627450980392,0.66274509803921566,0.22352941176470589,1" name="outline_color"/>
+            <Option type="QString" value="solid" name="outline_style"/>
+            <Option type="QString" value="0.4" name="outline_width"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="outline_width_map_unit_scale"/>
+            <Option type="QString" value="MM" name="outline_width_unit"/>
+            <Option type="QString" value="diameter" name="scale_method"/>
+            <Option type="QString" value="2" name="size"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="size_map_unit_scale"/>
+            <Option type="QString" value="MM" name="size_unit"/>
+            <Option type="QString" value="1" name="vertical_anchor_point"/>
+          </Option>
+          <data_defined_properties>
+            <Option type="Map">
+              <Option type="QString" value="" name="name"/>
+              <Option name="properties"/>
+              <Option type="QString" value="collection" name="type"/>
+            </Option>
+          </data_defined_properties>
+        </layer>
+      </symbol>
+      <symbol is_animated="0" type="marker" alpha="1" frame_rate="10" clip_to_extent="1" name="6" force_rhr="0">
+        <data_defined_properties>
+          <Option type="Map">
+            <Option type="QString" value="" name="name"/>
+            <Option name="properties"/>
+            <Option type="QString" value="collection" name="type"/>
+          </Option>
+        </data_defined_properties>
+        <layer id="{029021c6-a7a5-46b2-bbc7-6318d2f513e6}" pass="0" enabled="1" class="SimpleMarker" locked="0">
+          <Option type="Map">
+            <Option type="QString" value="0" name="angle"/>
+            <Option type="QString" value="square" name="cap_style"/>
+            <Option type="QString" value="255,255,255,255,hsv:0.43055555555555558,0,1,1" name="color"/>
+            <Option type="QString" value="1" name="horizontal_anchor_point"/>
+            <Option type="QString" value="bevel" name="joinstyle"/>
+            <Option type="QString" value="circle" name="name"/>
+            <Option type="QString" value="0,0" name="offset"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="offset_map_unit_scale"/>
+            <Option type="QString" value="MM" name="offset_unit"/>
+            <Option type="QString" value="114,114,114,255,rgb:0.44705882352941179,0.44705882352941179,0.44705882352941179,1" name="outline_color"/>
+            <Option type="QString" value="solid" name="outline_style"/>
+            <Option type="QString" value="0.4" name="outline_width"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="outline_width_map_unit_scale"/>
+            <Option type="QString" value="MM" name="outline_width_unit"/>
+            <Option type="QString" value="diameter" name="scale_method"/>
+            <Option type="QString" value="2" name="size"/>
+            <Option type="QString" value="3x:0,0,0,0,0,0" name="size_map_unit_scale"/>
+            <Option type="QString" value="MM" name="size_unit"/>
+            <Option type="QString" value="1" name="vertical_anchor_point"/>
+          </Option>
+          <data_defined_properties>
+            <Option type="Map">
+              <Option type="QString" value="" name="name"/>
+              <Option name="properties"/>
+              <Option type="QString" value="collection" name="type"/>
+            </Option>
+          </data_defined_properties>
+        </layer>
+      </symbol>
+    </symbols>
+    <source-symbol>
+      <symbol is_animated="0" type="marker" alpha="1" frame_rate="10" clip_to_extent="1" name="0" force_rhr="0">
+        <data_defined_properties>
+          <Option type="Map">
+            <Option type="QString" value="" name="name"/>
+            <Option name="properties"/>
+            <Option type="QString" value="collection" name="type"/>
+          </Option>
+        </data_defined_properties>
+        <layer id="{ec497d9d-d0c8-4f6e-909d-5be6771abf5e}" pass="0" enabled="1" class="SimpleMarker" locked="0">
           <Option type="Map">
             <Option type="QString" value="0" name="angle"/>
             <Option type="QString" value="square" name="cap_style"/>
@@ -185,7 +469,7 @@
           </data_defined_properties>
         </layer>
       </symbol>
-    </symbols>
+    </source-symbol>
     <rotation/>
     <sizescale/>
     <data-defined-properties>
@@ -199,7 +483,7 @@
   <selection mode="Default">
     <selectionColor invalid="1"/>
     <selectionSymbol>
-      <symbol type="marker" clip_to_extent="1" is_animated="0" force_rhr="0" name="" frame_rate="10" alpha="1">
+      <symbol is_animated="0" type="marker" alpha="1" frame_rate="10" clip_to_extent="1" name="" force_rhr="0">
         <data_defined_properties>
           <Option type="Map">
             <Option type="QString" value="" name="name"/>
@@ -207,7 +491,7 @@
             <Option type="QString" value="collection" name="type"/>
           </Option>
         </data_defined_properties>
-        <layer id="{17269ac0-03bb-42d6-b3ee-6466d4d681b2}" enabled="1" locked="0" pass="0" class="SimpleMarker">
+        <layer id="{17269ac0-03bb-42d6-b3ee-6466d4d681b2}" pass="0" enabled="1" class="SimpleMarker" locked="0">
           <Option type="Map">
             <Option type="QString" value="0" name="angle"/>
             <Option type="QString" value="square" name="cap_style"/>
@@ -250,311 +534,311 @@
   <blendMode>0</blendMode>
   <featureBlendMode>0</featureBlendMode>
   <layerOpacity>1</layerOpacity>
-  <geometryOptions geometryPrecision="0" removeDuplicateNodes="0">
+  <geometryOptions removeDuplicateNodes="0" geometryPrecision="0">
     <activeChecks type="StringList">
       <Option type="QString" value=""/>
     </activeChecks>
     <checkConfiguration/>
   </geometryOptions>
-  <legend type="default-vector" showLabelLegend="0"/>
+  <legend showLabelLegend="0" type="default-vector"/>
   <referencedLayers/>
   <referencingLayers/>
   <fieldConfiguration>
-    <field configurationFlags="NoFlag" name="fid">
+    <field name="fid" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="index">
+    <field name="index" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="MUID">
+    <field name="MUID" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="Enabled">
+    <field name="Enabled" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="GeomX">
+    <field name="GeomX" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="GeomY">
+    <field name="GeomY" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="TypeNo">
+    <field name="TypeNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="Diameter">
+    <field name="Diameter" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="GroundLevel">
+    <field name="GroundLevel" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="InvertLevel">
+    <field name="InvertLevel" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="GeometryID">
+    <field name="GeometryID" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="BranchID">
+    <field name="BranchID" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="BranchChainage">
+    <field name="BranchChainage" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="CoverTypeNo">
+    <field name="CoverTypeNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="BufferPressure">
+    <field name="BufferPressure" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="SpillCoef">
+    <field name="SpillCoef" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="InletControlNo">
+    <field name="InletControlNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="MaxInlet">
+    <field name="MaxInlet" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="QHTypeNo">
+    <field name="QHTypeNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="OutletQHID">
+    <field name="OutletQHID" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="LossParID">
+    <field name="LossParID" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="LossParNo">
+    <field name="LossParNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="LossTypeNo">
+    <field name="LossTypeNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="LossCoeffKm">
+    <field name="LossCoeffKm" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="LossCoeffContraction">
+    <field name="LossCoeffContraction" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="LossCoeffTotal">
+    <field name="LossCoeffTotal" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="EffAreaNo">
+    <field name="EffAreaNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="PMTypeNo">
+    <field name="PMTypeNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="PMLevel">
+    <field name="PMLevel" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="InfiltrationNo">
+    <field name="InfiltrationNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="InitialWL">
+    <field name="InitialWL" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="InfConstValue">
+    <field name="InfConstValue" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="KfsSide">
+    <field name="KfsSide" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="PorosityFill">
+    <field name="PorosityFill" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="KfsBottomNo">
+    <field name="KfsBottomNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="KfsBottom">
+    <field name="KfsBottom" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="DataSource">
+    <field name="DataSource" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="AssetName">
+    <field name="AssetName" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="SubModelNo">
+    <field name="SubModelNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="CriticalLevel">
+    <field name="CriticalLevel" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="Element_S">
+    <field name="Element_S" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="NetTypeNo">
+    <field name="NetTypeNo" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
         </config>
       </editWidget>
     </field>
-    <field configurationFlags="NoFlag" name="Description">
+    <field name="Description" configurationFlags="NoFlag">
       <editWidget type="TextEdit">
         <config>
           <Option/>
@@ -563,325 +847,325 @@
     </field>
   </fieldConfiguration>
   <aliases>
-    <alias index="0" name="" field="fid"/>
-    <alias index="1" name="" field="index"/>
-    <alias index="2" name="" field="MUID"/>
-    <alias index="3" name="" field="Enabled"/>
-    <alias index="4" name="" field="GeomX"/>
-    <alias index="5" name="" field="GeomY"/>
-    <alias index="6" name="" field="TypeNo"/>
-    <alias index="7" name="" field="Diameter"/>
-    <alias index="8" name="" field="GroundLevel"/>
-    <alias index="9" name="" field="InvertLevel"/>
-    <alias index="10" name="" field="GeometryID"/>
-    <alias index="11" name="" field="BranchID"/>
-    <alias index="12" name="" field="BranchChainage"/>
-    <alias index="13" name="" field="CoverTypeNo"/>
-    <alias index="14" name="" field="BufferPressure"/>
-    <alias index="15" name="" field="SpillCoef"/>
-    <alias index="16" name="" field="InletControlNo"/>
-    <alias index="17" name="" field="MaxInlet"/>
-    <alias index="18" name="" field="QHTypeNo"/>
-    <alias index="19" name="" field="OutletQHID"/>
-    <alias index="20" name="" field="LossParID"/>
-    <alias index="21" name="" field="LossParNo"/>
-    <alias index="22" name="" field="LossTypeNo"/>
-    <alias index="23" name="" field="LossCoeffKm"/>
-    <alias index="24" name="" field="LossCoeffContraction"/>
-    <alias index="25" name="" field="LossCoeffTotal"/>
-    <alias index="26" name="" field="EffAreaNo"/>
-    <alias index="27" name="" field="PMTypeNo"/>
-    <alias index="28" name="" field="PMLevel"/>
-    <alias index="29" name="" field="InfiltrationNo"/>
-    <alias index="30" name="" field="InitialWL"/>
-    <alias index="31" name="" field="InfConstValue"/>
-    <alias index="32" name="" field="KfsSide"/>
-    <alias index="33" name="" field="PorosityFill"/>
-    <alias index="34" name="" field="KfsBottomNo"/>
-    <alias index="35" name="" field="KfsBottom"/>
-    <alias index="36" name="" field="DataSource"/>
-    <alias index="37" name="" field="AssetName"/>
-    <alias index="38" name="" field="SubModelNo"/>
-    <alias index="39" name="" field="CriticalLevel"/>
-    <alias index="40" name="" field="Element_S"/>
-    <alias index="41" name="" field="NetTypeNo"/>
-    <alias index="42" name="" field="Description"/>
+    <alias field="fid" index="0" name=""/>
+    <alias field="index" index="1" name=""/>
+    <alias field="MUID" index="2" name=""/>
+    <alias field="Enabled" index="3" name=""/>
+    <alias field="GeomX" index="4" name=""/>
+    <alias field="GeomY" index="5" name=""/>
+    <alias field="TypeNo" index="6" name=""/>
+    <alias field="Diameter" index="7" name=""/>
+    <alias field="GroundLevel" index="8" name=""/>
+    <alias field="InvertLevel" index="9" name=""/>
+    <alias field="GeometryID" index="10" name=""/>
+    <alias field="BranchID" index="11" name=""/>
+    <alias field="BranchChainage" index="12" name=""/>
+    <alias field="CoverTypeNo" index="13" name=""/>
+    <alias field="BufferPressure" index="14" name=""/>
+    <alias field="SpillCoef" index="15" name=""/>
+    <alias field="InletControlNo" index="16" name=""/>
+    <alias field="MaxInlet" index="17" name=""/>
+    <alias field="QHTypeNo" index="18" name=""/>
+    <alias field="OutletQHID" index="19" name=""/>
+    <alias field="LossParID" index="20" name=""/>
+    <alias field="LossParNo" index="21" name=""/>
+    <alias field="LossTypeNo" index="22" name=""/>
+    <alias field="LossCoeffKm" index="23" name=""/>
+    <alias field="LossCoeffContraction" index="24" name=""/>
+    <alias field="LossCoeffTotal" index="25" name=""/>
+    <alias field="EffAreaNo" index="26" name=""/>
+    <alias field="PMTypeNo" index="27" name=""/>
+    <alias field="PMLevel" index="28" name=""/>
+    <alias field="InfiltrationNo" index="29" name=""/>
+    <alias field="InitialWL" index="30" name=""/>
+    <alias field="InfConstValue" index="31" name=""/>
+    <alias field="KfsSide" index="32" name=""/>
+    <alias field="PorosityFill" index="33" name=""/>
+    <alias field="KfsBottomNo" index="34" name=""/>
+    <alias field="KfsBottom" index="35" name=""/>
+    <alias field="DataSource" index="36" name=""/>
+    <alias field="AssetName" index="37" name=""/>
+    <alias field="SubModelNo" index="38" name=""/>
+    <alias field="CriticalLevel" index="39" name=""/>
+    <alias field="Element_S" index="40" name=""/>
+    <alias field="NetTypeNo" index="41" name=""/>
+    <alias field="Description" index="42" name=""/>
   </aliases>
   <splitPolicies>
-    <policy policy="Duplicate" field="fid"/>
-    <policy policy="Duplicate" field="index"/>
-    <policy policy="Duplicate" field="MUID"/>
-    <policy policy="Duplicate" field="Enabled"/>
-    <policy policy="Duplicate" field="GeomX"/>
-    <policy policy="Duplicate" field="GeomY"/>
-    <policy policy="Duplicate" field="TypeNo"/>
-    <policy policy="Duplicate" field="Diameter"/>
-    <policy policy="Duplicate" field="GroundLevel"/>
-    <policy policy="Duplicate" field="InvertLevel"/>
-    <policy policy="Duplicate" field="GeometryID"/>
-    <policy policy="Duplicate" field="BranchID"/>
-    <policy policy="Duplicate" field="BranchChainage"/>
-    <policy policy="Duplicate" field="CoverTypeNo"/>
-    <policy policy="Duplicate" field="BufferPressure"/>
-    <policy policy="Duplicate" field="SpillCoef"/>
-    <policy policy="Duplicate" field="InletControlNo"/>
-    <policy policy="Duplicate" field="MaxInlet"/>
-    <policy policy="Duplicate" field="QHTypeNo"/>
-    <policy policy="Duplicate" field="OutletQHID"/>
-    <policy policy="Duplicate" field="LossParID"/>
-    <policy policy="Duplicate" field="LossParNo"/>
-    <policy policy="Duplicate" field="LossTypeNo"/>
-    <policy policy="Duplicate" field="LossCoeffKm"/>
-    <policy policy="Duplicate" field="LossCoeffContraction"/>
-    <policy policy="Duplicate" field="LossCoeffTotal"/>
-    <policy policy="Duplicate" field="EffAreaNo"/>
-    <policy policy="Duplicate" field="PMTypeNo"/>
-    <policy policy="Duplicate" field="PMLevel"/>
-    <policy policy="Duplicate" field="InfiltrationNo"/>
-    <policy policy="Duplicate" field="InitialWL"/>
-    <policy policy="Duplicate" field="InfConstValue"/>
-    <policy policy="Duplicate" field="KfsSide"/>
-    <policy policy="Duplicate" field="PorosityFill"/>
-    <policy policy="Duplicate" field="KfsBottomNo"/>
-    <policy policy="Duplicate" field="KfsBottom"/>
-    <policy policy="Duplicate" field="DataSource"/>
-    <policy policy="Duplicate" field="AssetName"/>
-    <policy policy="Duplicate" field="SubModelNo"/>
-    <policy policy="Duplicate" field="CriticalLevel"/>
-    <policy policy="Duplicate" field="Element_S"/>
-    <policy policy="Duplicate" field="NetTypeNo"/>
-    <policy policy="Duplicate" field="Description"/>
+    <policy field="fid" policy="Duplicate"/>
+    <policy field="index" policy="Duplicate"/>
+    <policy field="MUID" policy="Duplicate"/>
+    <policy field="Enabled" policy="Duplicate"/>
+    <policy field="GeomX" policy="Duplicate"/>
+    <policy field="GeomY" policy="Duplicate"/>
+    <policy field="TypeNo" policy="Duplicate"/>
+    <policy field="Diameter" policy="Duplicate"/>
+    <policy field="GroundLevel" policy="Duplicate"/>
+    <policy field="InvertLevel" policy="Duplicate"/>
+    <policy field="GeometryID" policy="Duplicate"/>
+    <policy field="BranchID" policy="Duplicate"/>
+    <policy field="BranchChainage" policy="Duplicate"/>
+    <policy field="CoverTypeNo" policy="Duplicate"/>
+    <policy field="BufferPressure" policy="Duplicate"/>
+    <policy field="SpillCoef" policy="Duplicate"/>
+    <policy field="InletControlNo" policy="Duplicate"/>
+    <policy field="MaxInlet" policy="Duplicate"/>
+    <policy field="QHTypeNo" policy="Duplicate"/>
+    <policy field="OutletQHID" policy="Duplicate"/>
+    <policy field="LossParID" policy="Duplicate"/>
+    <policy field="LossParNo" policy="Duplicate"/>
+    <policy field="LossTypeNo" policy="Duplicate"/>
+    <policy field="LossCoeffKm" policy="Duplicate"/>
+    <policy field="LossCoeffContraction" policy="Duplicate"/>
+    <policy field="LossCoeffTotal" policy="Duplicate"/>
+    <policy field="EffAreaNo" policy="Duplicate"/>
+    <policy field="PMTypeNo" policy="Duplicate"/>
+    <policy field="PMLevel" policy="Duplicate"/>
+    <policy field="InfiltrationNo" policy="Duplicate"/>
+    <policy field="InitialWL" policy="Duplicate"/>
+    <policy field="InfConstValue" policy="Duplicate"/>
+    <policy field="KfsSide" policy="Duplicate"/>
+    <policy field="PorosityFill" policy="Duplicate"/>
+    <policy field="KfsBottomNo" policy="Duplicate"/>
+    <policy field="KfsBottom" policy="Duplicate"/>
+    <policy field="DataSource" policy="Duplicate"/>
+    <policy field="AssetName" policy="Duplicate"/>
+    <policy field="SubModelNo" policy="Duplicate"/>
+    <policy field="CriticalLevel" policy="Duplicate"/>
+    <policy field="Element_S" policy="Duplicate"/>
+    <policy field="NetTypeNo" policy="Duplicate"/>
+    <policy field="Description" policy="Duplicate"/>
   </splitPolicies>
   <duplicatePolicies>
-    <policy policy="Duplicate" field="fid"/>
-    <policy policy="Duplicate" field="index"/>
-    <policy policy="Duplicate" field="MUID"/>
-    <policy policy="Duplicate" field="Enabled"/>
-    <policy policy="Duplicate" field="GeomX"/>
-    <policy policy="Duplicate" field="GeomY"/>
-    <policy policy="Duplicate" field="TypeNo"/>
-    <policy policy="Duplicate" field="Diameter"/>
-    <policy policy="Duplicate" field="GroundLevel"/>
-    <policy policy="Duplicate" field="InvertLevel"/>
-    <policy policy="Duplicate" field="GeometryID"/>
-    <policy policy="Duplicate" field="BranchID"/>
-    <policy policy="Duplicate" field="BranchChainage"/>
-    <policy policy="Duplicate" field="CoverTypeNo"/>
-    <policy policy="Duplicate" field="BufferPressure"/>
-    <policy policy="Duplicate" field="SpillCoef"/>
-    <policy policy="Duplicate" field="InletControlNo"/>
-    <policy policy="Duplicate" field="MaxInlet"/>
-    <policy policy="Duplicate" field="QHTypeNo"/>
-    <policy policy="Duplicate" field="OutletQHID"/>
-    <policy policy="Duplicate" field="LossParID"/>
-    <policy policy="Duplicate" field="LossParNo"/>
-    <policy policy="Duplicate" field="LossTypeNo"/>
-    <policy policy="Duplicate" field="LossCoeffKm"/>
-    <policy policy="Duplicate" field="LossCoeffContraction"/>
-    <policy policy="Duplicate" field="LossCoeffTotal"/>
-    <policy policy="Duplicate" field="EffAreaNo"/>
-    <policy policy="Duplicate" field="PMTypeNo"/>
-    <policy policy="Duplicate" field="PMLevel"/>
-    <policy policy="Duplicate" field="InfiltrationNo"/>
-    <policy policy="Duplicate" field="InitialWL"/>
-    <policy policy="Duplicate" field="InfConstValue"/>
-    <policy policy="Duplicate" field="KfsSide"/>
-    <policy policy="Duplicate" field="PorosityFill"/>
-    <policy policy="Duplicate" field="KfsBottomNo"/>
-    <policy policy="Duplicate" field="KfsBottom"/>
-    <policy policy="Duplicate" field="DataSource"/>
-    <policy policy="Duplicate" field="AssetName"/>
-    <policy policy="Duplicate" field="SubModelNo"/>
-    <policy policy="Duplicate" field="CriticalLevel"/>
-    <policy policy="Duplicate" field="Element_S"/>
-    <policy policy="Duplicate" field="NetTypeNo"/>
-    <policy policy="Duplicate" field="Description"/>
+    <policy field="fid" policy="Duplicate"/>
+    <policy field="index" policy="Duplicate"/>
+    <policy field="MUID" policy="Duplicate"/>
+    <policy field="Enabled" policy="Duplicate"/>
+    <policy field="GeomX" policy="Duplicate"/>
+    <policy field="GeomY" policy="Duplicate"/>
+    <policy field="TypeNo" policy="Duplicate"/>
+    <policy field="Diameter" policy="Duplicate"/>
+    <policy field="GroundLevel" policy="Duplicate"/>
+    <policy field="InvertLevel" policy="Duplicate"/>
+    <policy field="GeometryID" policy="Duplicate"/>
+    <policy field="BranchID" policy="Duplicate"/>
+    <policy field="BranchChainage" policy="Duplicate"/>
+    <policy field="CoverTypeNo" policy="Duplicate"/>
+    <policy field="BufferPressure" policy="Duplicate"/>
+    <policy field="SpillCoef" policy="Duplicate"/>
+    <policy field="InletControlNo" policy="Duplicate"/>
+    <policy field="MaxInlet" policy="Duplicate"/>
+    <policy field="QHTypeNo" policy="Duplicate"/>
+    <policy field="OutletQHID" policy="Duplicate"/>
+    <policy field="LossParID" policy="Duplicate"/>
+    <policy field="LossParNo" policy="Duplicate"/>
+    <policy field="LossTypeNo" policy="Duplicate"/>
+    <policy field="LossCoeffKm" policy="Duplicate"/>
+    <policy field="LossCoeffContraction" policy="Duplicate"/>
+    <policy field="LossCoeffTotal" policy="Duplicate"/>
+    <policy field="EffAreaNo" policy="Duplicate"/>
+    <policy field="PMTypeNo" policy="Duplicate"/>
+    <policy field="PMLevel" policy="Duplicate"/>
+    <policy field="InfiltrationNo" policy="Duplicate"/>
+    <policy field="InitialWL" policy="Duplicate"/>
+    <policy field="InfConstValue" policy="Duplicate"/>
+    <policy field="KfsSide" policy="Duplicate"/>
+    <policy field="PorosityFill" policy="Duplicate"/>
+    <policy field="KfsBottomNo" policy="Duplicate"/>
+    <policy field="KfsBottom" policy="Duplicate"/>
+    <policy field="DataSource" policy="Duplicate"/>
+    <policy field="AssetName" policy="Duplicate"/>
+    <policy field="SubModelNo" policy="Duplicate"/>
+    <policy field="CriticalLevel" policy="Duplicate"/>
+    <policy field="Element_S" policy="Duplicate"/>
+    <policy field="NetTypeNo" policy="Duplicate"/>
+    <policy field="Description" policy="Duplicate"/>
   </duplicatePolicies>
   <defaults>
-    <default expression="" field="fid" applyOnUpdate="0"/>
-    <default expression="" field="index" applyOnUpdate="0"/>
-    <default expression="" field="MUID" applyOnUpdate="0"/>
-    <default expression="" field="Enabled" applyOnUpdate="0"/>
-    <default expression="" field="GeomX" applyOnUpdate="0"/>
-    <default expression="" field="GeomY" applyOnUpdate="0"/>
-    <default expression="" field="TypeNo" applyOnUpdate="0"/>
-    <default expression="" field="Diameter" applyOnUpdate="0"/>
-    <default expression="" field="GroundLevel" applyOnUpdate="0"/>
-    <default expression="" field="InvertLevel" applyOnUpdate="0"/>
-    <default expression="" field="GeometryID" applyOnUpdate="0"/>
-    <default expression="" field="BranchID" applyOnUpdate="0"/>
-    <default expression="" field="BranchChainage" applyOnUpdate="0"/>
-    <default expression="" field="CoverTypeNo" applyOnUpdate="0"/>
-    <default expression="" field="BufferPressure" applyOnUpdate="0"/>
-    <default expression="" field="SpillCoef" applyOnUpdate="0"/>
-    <default expression="" field="InletControlNo" applyOnUpdate="0"/>
-    <default expression="" field="MaxInlet" applyOnUpdate="0"/>
-    <default expression="" field="QHTypeNo" applyOnUpdate="0"/>
-    <default expression="" field="OutletQHID" applyOnUpdate="0"/>
-    <default expression="" field="LossParID" applyOnUpdate="0"/>
-    <default expression="" field="LossParNo" applyOnUpdate="0"/>
-    <default expression="" field="LossTypeNo" applyOnUpdate="0"/>
-    <default expression="" field="LossCoeffKm" applyOnUpdate="0"/>
-    <default expression="" field="LossCoeffContraction" applyOnUpdate="0"/>
-    <default expression="" field="LossCoeffTotal" applyOnUpdate="0"/>
-    <default expression="" field="EffAreaNo" applyOnUpdate="0"/>
-    <default expression="" field="PMTypeNo" applyOnUpdate="0"/>
-    <default expression="" field="PMLevel" applyOnUpdate="0"/>
-    <default expression="" field="InfiltrationNo" applyOnUpdate="0"/>
-    <default expression="" field="InitialWL" applyOnUpdate="0"/>
-    <default expression="" field="InfConstValue" applyOnUpdate="0"/>
-    <default expression="" field="KfsSide" applyOnUpdate="0"/>
-    <default expression="" field="PorosityFill" applyOnUpdate="0"/>
-    <default expression="" field="KfsBottomNo" applyOnUpdate="0"/>
-    <default expression="" field="KfsBottom" applyOnUpdate="0"/>
-    <default expression="" field="DataSource" applyOnUpdate="0"/>
-    <default expression="" field="AssetName" applyOnUpdate="0"/>
-    <default expression="" field="SubModelNo" applyOnUpdate="0"/>
-    <default expression="" field="CriticalLevel" applyOnUpdate="0"/>
-    <default expression="" field="Element_S" applyOnUpdate="0"/>
-    <default expression="" field="NetTypeNo" applyOnUpdate="0"/>
-    <default expression="" field="Description" applyOnUpdate="0"/>
+    <default applyOnUpdate="0" field="fid" expression=""/>
+    <default applyOnUpdate="0" field="index" expression=""/>
+    <default applyOnUpdate="0" field="MUID" expression=""/>
+    <default applyOnUpdate="0" field="Enabled" expression=""/>
+    <default applyOnUpdate="0" field="GeomX" expression=""/>
+    <default applyOnUpdate="0" field="GeomY" expression=""/>
+    <default applyOnUpdate="0" field="TypeNo" expression=""/>
+    <default applyOnUpdate="0" field="Diameter" expression=""/>
+    <default applyOnUpdate="0" field="GroundLevel" expression=""/>
+    <default applyOnUpdate="0" field="InvertLevel" expression=""/>
+    <default applyOnUpdate="0" field="GeometryID" expression=""/>
+    <default applyOnUpdate="0" field="BranchID" expression=""/>
+    <default applyOnUpdate="0" field="BranchChainage" expression=""/>
+    <default applyOnUpdate="0" field="CoverTypeNo" expression=""/>
+    <default applyOnUpdate="0" field="BufferPressure" expression=""/>
+    <default applyOnUpdate="0" field="SpillCoef" expression=""/>
+    <default applyOnUpdate="0" field="InletControlNo" expression=""/>
+    <default applyOnUpdate="0" field="MaxInlet" expression=""/>
+    <default applyOnUpdate="0" field="QHTypeNo" expression=""/>
+    <default applyOnUpdate="0" field="OutletQHID" expression=""/>
+    <default applyOnUpdate="0" field="LossParID" expression=""/>
+    <default applyOnUpdate="0" field="LossParNo" expression=""/>
+    <default applyOnUpdate="0" field="LossTypeNo" expression=""/>
+    <default applyOnUpdate="0" field="LossCoeffKm" expression=""/>
+    <default applyOnUpdate="0" field="LossCoeffContraction" expression=""/>
+    <default applyOnUpdate="0" field="LossCoeffTotal" expression=""/>
+    <default applyOnUpdate="0" field="EffAreaNo" expression=""/>
+    <default applyOnUpdate="0" field="PMTypeNo" expression=""/>
+    <default applyOnUpdate="0" field="PMLevel" expression=""/>
+    <default applyOnUpdate="0" field="InfiltrationNo" expression=""/>
+    <default applyOnUpdate="0" field="InitialWL" expression=""/>
+    <default applyOnUpdate="0" field="InfConstValue" expression=""/>
+    <default applyOnUpdate="0" field="KfsSide" expression=""/>
+    <default applyOnUpdate="0" field="PorosityFill" expression=""/>
+    <default applyOnUpdate="0" field="KfsBottomNo" expression=""/>
+    <default applyOnUpdate="0" field="KfsBottom" expression=""/>
+    <default applyOnUpdate="0" field="DataSource" expression=""/>
+    <default applyOnUpdate="0" field="AssetName" expression=""/>
+    <default applyOnUpdate="0" field="SubModelNo" expression=""/>
+    <default applyOnUpdate="0" field="CriticalLevel" expression=""/>
+    <default applyOnUpdate="0" field="Element_S" expression=""/>
+    <default applyOnUpdate="0" field="NetTypeNo" expression=""/>
+    <default applyOnUpdate="0" field="Description" expression=""/>
   </defaults>
   <constraints>
-    <constraint unique_strength="1" exp_strength="0" constraints="3" notnull_strength="1" field="fid"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="index"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="MUID"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="Enabled"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="GeomX"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="GeomY"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="TypeNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="Diameter"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="GroundLevel"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="InvertLevel"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="GeometryID"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="BranchID"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="BranchChainage"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="CoverTypeNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="BufferPressure"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="SpillCoef"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="InletControlNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="MaxInlet"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="QHTypeNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="OutletQHID"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="LossParID"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="LossParNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="LossTypeNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="LossCoeffKm"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="LossCoeffContraction"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="LossCoeffTotal"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="EffAreaNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="PMTypeNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="PMLevel"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="InfiltrationNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="InitialWL"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="InfConstValue"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="KfsSide"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="PorosityFill"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="KfsBottomNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="KfsBottom"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="DataSource"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="AssetName"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="SubModelNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="CriticalLevel"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="Element_S"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="NetTypeNo"/>
-    <constraint unique_strength="0" exp_strength="0" constraints="0" notnull_strength="0" field="Description"/>
+    <constraint field="fid" exp_strength="0" notnull_strength="1" constraints="3" unique_strength="1"/>
+    <constraint field="index" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="MUID" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="Enabled" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="GeomX" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="GeomY" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="TypeNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="Diameter" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="GroundLevel" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="InvertLevel" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="GeometryID" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="BranchID" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="BranchChainage" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="CoverTypeNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="BufferPressure" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="SpillCoef" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="InletControlNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="MaxInlet" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="QHTypeNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="OutletQHID" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="LossParID" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="LossParNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="LossTypeNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="LossCoeffKm" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="LossCoeffContraction" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="LossCoeffTotal" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="EffAreaNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="PMTypeNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="PMLevel" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="InfiltrationNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="InitialWL" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="InfConstValue" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="KfsSide" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="PorosityFill" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="KfsBottomNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="KfsBottom" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="DataSource" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="AssetName" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="SubModelNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="CriticalLevel" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="Element_S" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="NetTypeNo" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
+    <constraint field="Description" exp_strength="0" notnull_strength="0" constraints="0" unique_strength="0"/>
   </constraints>
   <constraintExpressions>
-    <constraint desc="" field="fid" exp=""/>
-    <constraint desc="" field="index" exp=""/>
-    <constraint desc="" field="MUID" exp=""/>
-    <constraint desc="" field="Enabled" exp=""/>
-    <constraint desc="" field="GeomX" exp=""/>
-    <constraint desc="" field="GeomY" exp=""/>
-    <constraint desc="" field="TypeNo" exp=""/>
-    <constraint desc="" field="Diameter" exp=""/>
-    <constraint desc="" field="GroundLevel" exp=""/>
-    <constraint desc="" field="InvertLevel" exp=""/>
-    <constraint desc="" field="GeometryID" exp=""/>
-    <constraint desc="" field="BranchID" exp=""/>
-    <constraint desc="" field="BranchChainage" exp=""/>
-    <constraint desc="" field="CoverTypeNo" exp=""/>
-    <constraint desc="" field="BufferPressure" exp=""/>
-    <constraint desc="" field="SpillCoef" exp=""/>
-    <constraint desc="" field="InletControlNo" exp=""/>
-    <constraint desc="" field="MaxInlet" exp=""/>
-    <constraint desc="" field="QHTypeNo" exp=""/>
-    <constraint desc="" field="OutletQHID" exp=""/>
-    <constraint desc="" field="LossParID" exp=""/>
-    <constraint desc="" field="LossParNo" exp=""/>
-    <constraint desc="" field="LossTypeNo" exp=""/>
-    <constraint desc="" field="LossCoeffKm" exp=""/>
-    <constraint desc="" field="LossCoeffContraction" exp=""/>
-    <constraint desc="" field="LossCoeffTotal" exp=""/>
-    <constraint desc="" field="EffAreaNo" exp=""/>
-    <constraint desc="" field="PMTypeNo" exp=""/>
-    <constraint desc="" field="PMLevel" exp=""/>
-    <constraint desc="" field="InfiltrationNo" exp=""/>
-    <constraint desc="" field="InitialWL" exp=""/>
-    <constraint desc="" field="InfConstValue" exp=""/>
-    <constraint desc="" field="KfsSide" exp=""/>
-    <constraint desc="" field="PorosityFill" exp=""/>
-    <constraint desc="" field="KfsBottomNo" exp=""/>
-    <constraint desc="" field="KfsBottom" exp=""/>
-    <constraint desc="" field="DataSource" exp=""/>
-    <constraint desc="" field="AssetName" exp=""/>
-    <constraint desc="" field="SubModelNo" exp=""/>
-    <constraint desc="" field="CriticalLevel" exp=""/>
-    <constraint desc="" field="Element_S" exp=""/>
-    <constraint desc="" field="NetTypeNo" exp=""/>
-    <constraint desc="" field="Description" exp=""/>
+    <constraint field="fid" desc="" exp=""/>
+    <constraint field="index" desc="" exp=""/>
+    <constraint field="MUID" desc="" exp=""/>
+    <constraint field="Enabled" desc="" exp=""/>
+    <constraint field="GeomX" desc="" exp=""/>
+    <constraint field="GeomY" desc="" exp=""/>
+    <constraint field="TypeNo" desc="" exp=""/>
+    <constraint field="Diameter" desc="" exp=""/>
+    <constraint field="GroundLevel" desc="" exp=""/>
+    <constraint field="InvertLevel" desc="" exp=""/>
+    <constraint field="GeometryID" desc="" exp=""/>
+    <constraint field="BranchID" desc="" exp=""/>
+    <constraint field="BranchChainage" desc="" exp=""/>
+    <constraint field="CoverTypeNo" desc="" exp=""/>
+    <constraint field="BufferPressure" desc="" exp=""/>
+    <constraint field="SpillCoef" desc="" exp=""/>
+    <constraint field="InletControlNo" desc="" exp=""/>
+    <constraint field="MaxInlet" desc="" exp=""/>
+    <constraint field="QHTypeNo" desc="" exp=""/>
+    <constraint field="OutletQHID" desc="" exp=""/>
+    <constraint field="LossParID" desc="" exp=""/>
+    <constraint field="LossParNo" desc="" exp=""/>
+    <constraint field="LossTypeNo" desc="" exp=""/>
+    <constraint field="LossCoeffKm" desc="" exp=""/>
+    <constraint field="LossCoeffContraction" desc="" exp=""/>
+    <constraint field="LossCoeffTotal" desc="" exp=""/>
+    <constraint field="EffAreaNo" desc="" exp=""/>
+    <constraint field="PMTypeNo" desc="" exp=""/>
+    <constraint field="PMLevel" desc="" exp=""/>
+    <constraint field="InfiltrationNo" desc="" exp=""/>
+    <constraint field="InitialWL" desc="" exp=""/>
+    <constraint field="InfConstValue" desc="" exp=""/>
+    <constraint field="KfsSide" desc="" exp=""/>
+    <constraint field="PorosityFill" desc="" exp=""/>
+    <constraint field="KfsBottomNo" desc="" exp=""/>
+    <constraint field="KfsBottom" desc="" exp=""/>
+    <constraint field="DataSource" desc="" exp=""/>
+    <constraint field="AssetName" desc="" exp=""/>
+    <constraint field="SubModelNo" desc="" exp=""/>
+    <constraint field="CriticalLevel" desc="" exp=""/>
+    <constraint field="Element_S" desc="" exp=""/>
+    <constraint field="NetTypeNo" desc="" exp=""/>
+    <constraint field="Description" desc="" exp=""/>
   </constraintExpressions>
   <expressionfields/>
   <attributeactions>
-    <defaultAction key="Canvas" value="{00000000-0000-0000-0000-000000000000}"/>
+    <defaultAction value="{00000000-0000-0000-0000-000000000000}" key="Canvas"/>
   </attributeactions>
-  <attributetableconfig sortExpression="" actionWidgetStyle="dropDown" sortOrder="0">
+  <attributetableconfig sortExpression="" sortOrder="0" actionWidgetStyle="dropDown">
     <columns>
-      <column type="field" name="fid" hidden="0" width="-1"/>
-      <column type="field" name="index" hidden="0" width="-1"/>
-      <column type="field" name="MUID" hidden="0" width="-1"/>
-      <column type="field" name="Enabled" hidden="0" width="-1"/>
-      <column type="field" name="GeomX" hidden="0" width="-1"/>
-      <column type="field" name="GeomY" hidden="0" width="-1"/>
-      <column type="field" name="TypeNo" hidden="0" width="-1"/>
-      <column type="field" name="Diameter" hidden="0" width="-1"/>
-      <column type="field" name="GroundLevel" hidden="0" width="-1"/>
-      <column type="field" name="InvertLevel" hidden="0" width="-1"/>
-      <column type="field" name="GeometryID" hidden="0" width="-1"/>
-      <column type="field" name="BranchID" hidden="0" width="-1"/>
-      <column type="field" name="BranchChainage" hidden="0" width="-1"/>
-      <column type="field" name="CoverTypeNo" hidden="0" width="-1"/>
-      <column type="field" name="BufferPressure" hidden="0" width="-1"/>
-      <column type="field" name="SpillCoef" hidden="0" width="-1"/>
-      <column type="field" name="InletControlNo" hidden="0" width="-1"/>
-      <column type="field" name="MaxInlet" hidden="0" width="-1"/>
-      <column type="field" name="QHTypeNo" hidden="0" width="-1"/>
-      <column type="field" name="OutletQHID" hidden="0" width="-1"/>
-      <column type="field" name="LossParID" hidden="0" width="-1"/>
-      <column type="field" name="LossParNo" hidden="0" width="-1"/>
-      <column type="field" name="LossTypeNo" hidden="0" width="-1"/>
-      <column type="field" name="LossCoeffKm" hidden="0" width="-1"/>
-      <column type="field" name="LossCoeffContraction" hidden="0" width="-1"/>
-      <column type="field" name="LossCoeffTotal" hidden="0" width="-1"/>
-      <column type="field" name="EffAreaNo" hidden="0" width="-1"/>
-      <column type="field" name="PMTypeNo" hidden="0" width="-1"/>
-      <column type="field" name="PMLevel" hidden="0" width="-1"/>
-      <column type="field" name="InfiltrationNo" hidden="0" width="-1"/>
-      <column type="field" name="InitialWL" hidden="0" width="-1"/>
-      <column type="field" name="InfConstValue" hidden="0" width="-1"/>
-      <column type="field" name="KfsSide" hidden="0" width="-1"/>
-      <column type="field" name="PorosityFill" hidden="0" width="-1"/>
-      <column type="field" name="KfsBottomNo" hidden="0" width="-1"/>
-      <column type="field" name="KfsBottom" hidden="0" width="-1"/>
-      <column type="field" name="DataSource" hidden="0" width="-1"/>
-      <column type="field" name="AssetName" hidden="0" width="-1"/>
-      <column type="field" name="SubModelNo" hidden="0" width="-1"/>
-      <column type="field" name="CriticalLevel" hidden="0" width="-1"/>
-      <column type="field" name="Element_S" hidden="0" width="-1"/>
-      <column type="field" name="NetTypeNo" hidden="0" width="-1"/>
-      <column type="field" name="Description" hidden="0" width="-1"/>
-      <column type="actions" hidden="1" width="-1"/>
+      <column hidden="0" type="field" name="fid" width="-1"/>
+      <column hidden="0" type="field" name="index" width="-1"/>
+      <column hidden="0" type="field" name="MUID" width="-1"/>
+      <column hidden="0" type="field" name="Enabled" width="-1"/>
+      <column hidden="0" type="field" name="GeomX" width="-1"/>
+      <column hidden="0" type="field" name="GeomY" width="-1"/>
+      <column hidden="0" type="field" name="TypeNo" width="-1"/>
+      <column hidden="0" type="field" name="Diameter" width="-1"/>
+      <column hidden="0" type="field" name="GroundLevel" width="-1"/>
+      <column hidden="0" type="field" name="InvertLevel" width="-1"/>
+      <column hidden="0" type="field" name="GeometryID" width="-1"/>
+      <column hidden="0" type="field" name="BranchID" width="-1"/>
+      <column hidden="0" type="field" name="BranchChainage" width="-1"/>
+      <column hidden="0" type="field" name="CoverTypeNo" width="-1"/>
+      <column hidden="0" type="field" name="BufferPressure" width="-1"/>
+      <column hidden="0" type="field" name="SpillCoef" width="-1"/>
+      <column hidden="0" type="field" name="InletControlNo" width="-1"/>
+      <column hidden="0" type="field" name="MaxInlet" width="-1"/>
+      <column hidden="0" type="field" name="QHTypeNo" width="-1"/>
+      <column hidden="0" type="field" name="OutletQHID" width="-1"/>
+      <column hidden="0" type="field" name="LossParID" width="-1"/>
+      <column hidden="0" type="field" name="LossParNo" width="-1"/>
+      <column hidden="0" type="field" name="LossTypeNo" width="-1"/>
+      <column hidden="0" type="field" name="LossCoeffKm" width="-1"/>
+      <column hidden="0" type="field" name="LossCoeffContraction" width="-1"/>
+      <column hidden="0" type="field" name="LossCoeffTotal" width="-1"/>
+      <column hidden="0" type="field" name="EffAreaNo" width="-1"/>
+      <column hidden="0" type="field" name="PMTypeNo" width="-1"/>
+      <column hidden="0" type="field" name="PMLevel" width="-1"/>
+      <column hidden="0" type="field" name="InfiltrationNo" width="-1"/>
+      <column hidden="0" type="field" name="InitialWL" width="-1"/>
+      <column hidden="0" type="field" name="InfConstValue" width="-1"/>
+      <column hidden="0" type="field" name="KfsSide" width="-1"/>
+      <column hidden="0" type="field" name="PorosityFill" width="-1"/>
+      <column hidden="0" type="field" name="KfsBottomNo" width="-1"/>
+      <column hidden="0" type="field" name="KfsBottom" width="-1"/>
+      <column hidden="0" type="field" name="DataSource" width="-1"/>
+      <column hidden="0" type="field" name="AssetName" width="-1"/>
+      <column hidden="0" type="field" name="SubModelNo" width="-1"/>
+      <column hidden="0" type="field" name="CriticalLevel" width="-1"/>
+      <column hidden="0" type="field" name="Element_S" width="-1"/>
+      <column hidden="0" type="field" name="NetTypeNo" width="-1"/>
+      <column hidden="0" type="field" name="Description" width="-1"/>
+      <column hidden="1" type="actions" width="-1"/>
     </columns>
   </attributetableconfig>
   <conditionalstyles>
@@ -1003,49 +1287,49 @@ def my_form_open(dialog, layer, feature):
     <field labelOnTop="0" name="index"/>
   </labelOnTop>
   <reuseLastValue>
-    <field reuseLastValue="0" name="AssetName"/>
-    <field reuseLastValue="0" name="BranchChainage"/>
-    <field reuseLastValue="0" name="BranchID"/>
-    <field reuseLastValue="0" name="BufferPressure"/>
-    <field reuseLastValue="0" name="CoverTypeNo"/>
-    <field reuseLastValue="0" name="CriticalLevel"/>
-    <field reuseLastValue="0" name="DataSource"/>
-    <field reuseLastValue="0" name="Description"/>
-    <field reuseLastValue="0" name="Diameter"/>
-    <field reuseLastValue="0" name="EffAreaNo"/>
-    <field reuseLastValue="0" name="Element_S"/>
-    <field reuseLastValue="0" name="Enabled"/>
-    <field reuseLastValue="0" name="GeomX"/>
-    <field reuseLastValue="0" name="GeomY"/>
-    <field reuseLastValue="0" name="GeometryID"/>
-    <field reuseLastValue="0" name="GroundLevel"/>
-    <field reuseLastValue="0" name="InfConstValue"/>
-    <field reuseLastValue="0" name="InfiltrationNo"/>
-    <field reuseLastValue="0" name="InitialWL"/>
-    <field reuseLastValue="0" name="InletControlNo"/>
-    <field reuseLastValue="0" name="InvertLevel"/>
-    <field reuseLastValue="0" name="KfsBottom"/>
-    <field reuseLastValue="0" name="KfsBottomNo"/>
-    <field reuseLastValue="0" name="KfsSide"/>
-    <field reuseLastValue="0" name="LossCoeffContraction"/>
-    <field reuseLastValue="0" name="LossCoeffKm"/>
-    <field reuseLastValue="0" name="LossCoeffTotal"/>
-    <field reuseLastValue="0" name="LossParID"/>
-    <field reuseLastValue="0" name="LossParNo"/>
-    <field reuseLastValue="0" name="LossTypeNo"/>
-    <field reuseLastValue="0" name="MUID"/>
-    <field reuseLastValue="0" name="MaxInlet"/>
-    <field reuseLastValue="0" name="NetTypeNo"/>
-    <field reuseLastValue="0" name="OutletQHID"/>
-    <field reuseLastValue="0" name="PMLevel"/>
-    <field reuseLastValue="0" name="PMTypeNo"/>
-    <field reuseLastValue="0" name="PorosityFill"/>
-    <field reuseLastValue="0" name="QHTypeNo"/>
-    <field reuseLastValue="0" name="SpillCoef"/>
-    <field reuseLastValue="0" name="SubModelNo"/>
-    <field reuseLastValue="0" name="TypeNo"/>
-    <field reuseLastValue="0" name="fid"/>
-    <field reuseLastValue="0" name="index"/>
+    <field name="AssetName" reuseLastValue="0"/>
+    <field name="BranchChainage" reuseLastValue="0"/>
+    <field name="BranchID" reuseLastValue="0"/>
+    <field name="BufferPressure" reuseLastValue="0"/>
+    <field name="CoverTypeNo" reuseLastValue="0"/>
+    <field name="CriticalLevel" reuseLastValue="0"/>
+    <field name="DataSource" reuseLastValue="0"/>
+    <field name="Description" reuseLastValue="0"/>
+    <field name="Diameter" reuseLastValue="0"/>
+    <field name="EffAreaNo" reuseLastValue="0"/>
+    <field name="Element_S" reuseLastValue="0"/>
+    <field name="Enabled" reuseLastValue="0"/>
+    <field name="GeomX" reuseLastValue="0"/>
+    <field name="GeomY" reuseLastValue="0"/>
+    <field name="GeometryID" reuseLastValue="0"/>
+    <field name="GroundLevel" reuseLastValue="0"/>
+    <field name="InfConstValue" reuseLastValue="0"/>
+    <field name="InfiltrationNo" reuseLastValue="0"/>
+    <field name="InitialWL" reuseLastValue="0"/>
+    <field name="InletControlNo" reuseLastValue="0"/>
+    <field name="InvertLevel" reuseLastValue="0"/>
+    <field name="KfsBottom" reuseLastValue="0"/>
+    <field name="KfsBottomNo" reuseLastValue="0"/>
+    <field name="KfsSide" reuseLastValue="0"/>
+    <field name="LossCoeffContraction" reuseLastValue="0"/>
+    <field name="LossCoeffKm" reuseLastValue="0"/>
+    <field name="LossCoeffTotal" reuseLastValue="0"/>
+    <field name="LossParID" reuseLastValue="0"/>
+    <field name="LossParNo" reuseLastValue="0"/>
+    <field name="LossTypeNo" reuseLastValue="0"/>
+    <field name="MUID" reuseLastValue="0"/>
+    <field name="MaxInlet" reuseLastValue="0"/>
+    <field name="NetTypeNo" reuseLastValue="0"/>
+    <field name="OutletQHID" reuseLastValue="0"/>
+    <field name="PMLevel" reuseLastValue="0"/>
+    <field name="PMTypeNo" reuseLastValue="0"/>
+    <field name="PorosityFill" reuseLastValue="0"/>
+    <field name="QHTypeNo" reuseLastValue="0"/>
+    <field name="SpillCoef" reuseLastValue="0"/>
+    <field name="SubModelNo" reuseLastValue="0"/>
+    <field name="TypeNo" reuseLastValue="0"/>
+    <field name="fid" reuseLastValue="0"/>
+    <field name="index" reuseLastValue="0"/>
   </reuseLastValue>
   <dataDefinedFieldProperties/>
   <widgets/>
