@@ -319,6 +319,22 @@ def _public_readable_quantities(obj: Any) -> list[str]:
             quantities.append(name)
     return sorted(set(quantities))
 
+def _quantity_key(quantity: object) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(quantity).lower())
+
+def _get_readable_quantity(obj: Any, quantity: str) -> Any:
+    try:
+        return getattr(obj, quantity)
+    except Exception:
+        pass
+
+    requested_key = _quantity_key(quantity)
+
+    for candidate in _public_readable_quantities(obj):
+        if _quantity_key(candidate) == requested_key:
+            return getattr(obj, candidate)
+
+    raise AttributeError(f"Object has no readable quantity {quantity!r}.")
 
 def _normalize_timeseries(data: pd.DataFrame | pd.Series) -> pd.DataFrame:
     """Return a clean DataFrame with a datetime index named ``time``."""
@@ -553,23 +569,6 @@ class Res1D:
         message = "Could not write cache file (" + "; ".join(errors) + ")"
         raise OSError(message)
 
-    def _quantity_key(quantity: object) -> str:
-        return re.sub(r"[^a-z0-9]+", "", str(quantity).lower())
-    
-    def _get_readable_quantity(obj: Any, quantity: str) -> Any:
-        try:
-            return getattr(obj, quantity)
-        except Exception:
-            pass
-    
-        requested_key = _quantity_key(quantity)
-    
-        for candidate in _public_readable_quantities(obj):
-            if _quantity_key(candidate) == requested_key:
-                return getattr(obj, candidate)
-    
-        raise AttributeError(f"Object has no readable quantity {quantity!r}.")
-  
     def _iter_node_items(self) -> Iterator[tuple[str, Any]]:
         nodes = self.res.nodes
         for key in _collection_keys(nodes):
