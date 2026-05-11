@@ -25,7 +25,9 @@ from collections.abc import Iterable, Sequence
 import os
 from os import PathLike as OsPathLike
 from pathlib import Path
+from shutil import copy2
 import tempfile
+
 
 import mikeio
 import pandas as pd
@@ -804,3 +806,71 @@ class Dfs0:
                 findings[path] = duplicates.tolist()
 
         return findings
+
+def download_template(template_path, target_path):
+    """Copy a template file from ``docs/templates`` to a target location.
+
+    This is mainly intended for example notebooks or user-facing workflows where
+    a method needs a configuration/template file.
+
+    Parameters
+    ----------
+    template_path : str or pathlib.Path
+        Template file to copy. This can be:
+
+        - an absolute path;
+        - a path relative to the project root, e.g. ``docs/templates/file.xlsx``;
+        - a path relative to ``docs/templates``, e.g. ``file.xlsx``.
+
+    target_path : str or pathlib.Path
+        Destination path. If this is an existing directory, the template keeps
+        its original filename. If it is a file path, the template is copied there.
+
+    Returns
+    -------
+    pathlib.Path
+        Path to the copied template file.
+    """
+    template_path = Path(template_path)
+    target_path = Path(target_path)
+
+    project_root = _find_project_root()
+    templates_dir = project_root / "docs" / "templates"
+
+    if template_path.is_absolute():
+        source_path = template_path
+    elif template_path.parts[:2] == ("docs", "templates"):
+        source_path = project_root / template_path
+    else:
+        source_path = templates_dir / template_path
+
+    if not source_path.exists():
+        raise FileNotFoundError(f"Template file not found: {source_path}")
+
+    if not source_path.is_file():
+        raise IsADirectoryError(f"Template path is not a file: {source_path}")
+
+    if target_path.exists() and target_path.is_dir():
+        destination_path = target_path / source_path.name
+    elif target_path.suffix:
+        destination_path = target_path
+    else:
+        destination_path = target_path / source_path.name
+
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    copy2(source_path, destination_path)
+
+    return destination_path
+
+
+def _find_project_root():
+    """Find the repository root from the current file location."""
+    current_path = Path(__file__).resolve()
+
+    for parent in current_path.parents:
+        if (parent / "docs" / "templates").exists():
+            return parent
+
+    raise FileNotFoundError(
+        "Could not find project root containing 'docs/templates'."
+    )
