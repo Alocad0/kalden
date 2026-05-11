@@ -67,9 +67,12 @@ DEFAULT_QUANTITY_CANDIDATES: tuple[str, ...] = (
     "HeadLoss",
     "Inflow",
     "Outflow",
-    "TotalRunoff",
-    "NetRainfall"
+    "TotalRunOff",      # mikeio1d spelling
+    "TotalRunoff",      # optional fallback spelling
+    "ActualRainfall",   # often used for rainfall on catchments
+    "NetRainfall",
 )
+
 
 # MIKE 1D stores these as reaches, but exposes their IDs with prefixes such as
 # "Weir:W1" or "Pump:P1". We expose them as dedicated object types while still
@@ -82,6 +85,7 @@ SPECIAL_REACH_PREFIXES: dict[str, str] = {
 DEFAULT_OBJECT_TYPES: tuple[str, ...] = (
     "node",
     "reach",
+    "catchment",
     "weir",
     "pump",
 )
@@ -209,23 +213,25 @@ def _object_ref_from_source(source_object_type: str, source_object_id: object) -
 def _normalize_object_type(object_type: str) -> str:
     normalized = object_type.strip().lower()
     aliases = {
-        "node": "node",
-        "nodes": "node",
-        "reach": "reach",
-        "reaches": "reach",
-        "branch": "reach",
-        "branches": "reach",
-        "link": "reach",
-        "links": "reach",
-        "weir": "weir",
-        "weirs": "weir",
-        "pump": "pump",
-        "pumps": "pump",
+      "node": "node",
+      "nodes": "node",
+      "reach": "reach",
+      "reaches": "reach",
+      "branch": "reach",
+      "branches": "reach",
+      "link": "reach",
+      "links": "reach",
+      "catchment": "catchment",
+      "catchments": "catchment",
+      "weir": "weir",
+      "weirs": "weir",
+      "pump": "pump",
+      "pumps": "pump",
     }
     try:
         return aliases[normalized]
     except KeyError as exc:
-        allowed = "'node', 'reach', 'weir', 'pump'"
+        allowed = "'node', 'reach', 'catchment', 'weir', 'pump'"
         raise ValueError(f"object_type must be one of: {allowed}.") from exc
 
 
@@ -547,6 +553,23 @@ class Res1D:
         message = "Could not write cache file (" + "; ".join(errors) + ")"
         raise OSError(message)
 
+    def _quantity_key(quantity: object) -> str:
+        return re.sub(r"[^a-z0-9]+", "", str(quantity).lower())
+    
+    def _get_readable_quantity(obj: Any, quantity: str) -> Any:
+        try:
+            return getattr(obj, quantity)
+        except Exception:
+            pass
+    
+        requested_key = _quantity_key(quantity)
+    
+        for candidate in _public_readable_quantities(obj):
+            if _quantity_key(candidate) == requested_key:
+                return getattr(obj, candidate)
+    
+        raise AttributeError(f"Object has no readable quantity {quantity!r}.")
+  
     def _iter_node_items(self) -> Iterator[tuple[str, Any]]:
         nodes = self.res.nodes
         for key in _collection_keys(nodes):
@@ -586,17 +609,34 @@ class Res1D:
             ref = _object_ref_from_source("reach", source_id)
             if ref.object_type == "reach":
                 yield ref.object_id, item
+    def _iter_catchment_items(self) -> Iterator[tuple[str, Any]]:
+        catchments = getattr(self.res, "catchments", None)
+    
+        if catchments is None:
+            return
+    
+        for key in _collection_keys(catchments):
+            try:
+                yield str(key), catchments[key]
+            except Exception:
+                continue
 
     def _iter_object_items(self, object_type: str) -> Iterator[tuple[ObjectRef, Any]]:
         normalized = _normalize_object_type(object_type)
-
+    
         if normalized == "node":
             for object_id, item in self._iter_node_items():
                 yield _object_ref_from_source("node", object_id), item
             return
-
+    
+        if normalized == "catchment":
+            for object_id, item in self._iter_catchment_items():
+                yield _object_ref_from_source("catchment", object_id), item
+            return
+    
         for source_id, item in self._iter_raw_reach_items():
             ref = _object_ref_from_source("reach", source_id)
+    
             if ref.object_type == normalized:
                 yield ref, item
 
@@ -622,6 +662,19 @@ class Res1D:
                     return item
 
             raise KeyError(f"node object not found: {object_id!r}")
+
+        if normalized == "catchment":
+            collection = self.res.catchments
+            try:
+                return collection[public_id]
+            except Exception:
+                pass
+        
+            for current_id, item in self._iter_catchment_items():
+                if current_id == public_id or current_id == str(object_id):
+                    return item
+        
+            raise KeyError(f"catchment object not found: {object_id!r}")
 
         # Reaches, weirs, and pumps are all stored under res.reaches.
         reaches = self.res.reaches
@@ -841,8 +894,8 @@ class Res1D:
 
         obj = self._lookup_object(ref.object_type, ref.object_id)
         try:
-            quantity_obj = getattr(obj, ref.quantity)
-        except Exception as exc:
+            quantity_obj = _get_readable_quantity(obj, ref.quantity)
+        except AttributeError as exc:
             raise AttributeError(
                 f"{ref.object_type} {ref.object_id!r} has no quantity "
                 f"{ref.quantity!r}."
