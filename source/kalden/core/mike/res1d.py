@@ -67,6 +67,8 @@ DEFAULT_QUANTITY_CANDIDATES: tuple[str, ...] = (
     "HeadLoss",
     "Inflow",
     "Outflow",
+    "TotalRunoff",
+    "NetRainfall"
 )
 
 # MIKE 1D stores these as reaches, but exposes their IDs with prefixes such as
