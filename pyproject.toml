@@ -43,9 +43,14 @@ dev = [
 
 [tool.setuptools]
 package-dir = {"" = "source"}
+include-package-data = true
 
 [tool.setuptools.package-data]
 "kalden.styles" = ["*.qml"]
+"kalden" = [
+    "templates/*",
+    "templates/**/*",
+]
 
 [tool.setuptools.packages.find]
 where = ["source"]
