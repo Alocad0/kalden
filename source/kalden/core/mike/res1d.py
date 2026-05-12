@@ -1061,23 +1061,15 @@ class Res1D:
         quantity: str,
         *,
         force_refresh: bool = False,
+        cutoff: float | None = None,
     ) -> pd.DataFrame:
-        """Read one result time series as a pandas DataFrame.
-
-        The method checks, in order:
-        1. optional in-memory cache,
-        2. on-disk cache,
-        3. the original ``.res1d`` file through ``mikeio1d``.
-
-        ``object_type`` can be ``node``, ``reach``, ``weir``, or ``pump``. Weirs
-        and pumps are resolved against the underlying ``res.reaches`` collection.
-        These two calls are therefore equivalent when the result contains a
-        source reach named ``"Weir:W1"``::
-
-            res.read_series("weir", "W1", "Discharge")
-            res.read_series("weir", "Weir:W1", "Discharge")
-        """
-
+        """Read one result time series as a pandas DataFrame."""
+    
+        def _apply_cutoff(frame: pd.DataFrame) -> pd.DataFrame:
+            if cutoff is None:
+                return frame
+            return frame.mask(frame.abs() < cutoff, 0)
+    
         normalized_type = _normalize_object_type(object_type)
         normalized_id = _normalize_object_id_for_type(normalized_type, object_id)
         ref = SeriesRef(
@@ -1085,10 +1077,10 @@ class Res1D:
             object_id=normalized_id,
             quantity=str(quantity),
         )
-
+    
         if not force_refresh and self.keep_in_memory and ref in self._memory_cache:
-            return self._memory_cache[ref].copy()
-
+            return _apply_cutoff(self._memory_cache[ref].copy())
+    
         stem = self._series_cache_stem(ref)
         if not force_refresh:
             cached = self._read_dataframe_cache(stem)
@@ -1096,9 +1088,10 @@ class Res1D:
                 cached = _normalize_timeseries(cached)
                 if self.keep_in_memory:
                     self._memory_cache[ref] = cached
-                return cached.copy()
-
+                return _apply_cutoff(cached.copy())
+    
         obj = self._lookup_object(ref.object_type, ref.object_id)
+    
         try:
             quantity_obj = _get_readable_quantity(obj, ref.quantity)
         except AttributeError as exc:
@@ -1106,19 +1099,21 @@ class Res1D:
                 f"{ref.object_type} {ref.object_id!r} has no quantity "
                 f"{ref.quantity!r}."
             ) from exc
-
+    
         read = getattr(quantity_obj, "read", None)
         if not callable(read):
             raise AttributeError(
                 f"{ref.object_type} {ref.object_id!r} quantity "
                 f"{ref.quantity!r} is not readable."
             )
-
+    
         frame = _normalize_timeseries(read())
         self._write_dataframe_cache(frame, stem)
+    
         if self.keep_in_memory:
             self._memory_cache[ref] = frame
-        return frame.copy()
+    
+        return _apply_cutoff(frame.copy())
 
     def iter_series(
         self,
