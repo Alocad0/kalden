@@ -27,11 +27,12 @@ Examples
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from os import PathLike as OsPathLike
 from pathlib import Path
 from typing import Any
+import math
 
 import hashlib
 import json
@@ -53,6 +54,7 @@ __all__ = [
     "SeriesRef",
     "SPECIAL_REACH_PREFIXES",
     "default_cache_dir",
+    "discharge_cutoff_sensitivity",
 ]
 
 
@@ -387,6 +389,211 @@ def _summary_column_name(reducer: str, quantity: str) -> str:
     snake = re.sub(r"[^a-z0-9]+", "_", snake).strip("_") or "value"
     return f"{reducer}_{snake}"
 
+def _default_step_volume_m3(q: pd.DataFrame | pd.Series) -> float:
+    """Return signed volume in m3 from discharge in m3/s using step integration."""
+    if isinstance(q, pd.Series):
+        frame = q.to_frame()
+    else:
+        frame = q.copy()
+
+    if frame.empty:
+        return 0.0
+
+    if not isinstance(frame.index, pd.DatetimeIndex):
+        raise TypeError("q must have a pandas DatetimeIndex.")
+
+    frame = frame.sort_index()
+
+    if len(frame.index) < 2:
+        return 0.0
+
+    dt_seconds = (
+        frame.index.to_series()
+        .shift(-1)
+        .sub(frame.index.to_series())
+        .dt.total_seconds()
+    )
+
+    values = frame.iloc[:-1]
+    durations = dt_seconds.iloc[:-1]
+
+    volume = values.mul(durations, axis=0).sum(skipna=True).sum()
+
+    return float(volume)
+
+
+def _default_logspace(
+    start: float = 1e-8,
+    stop: float = 1e-1,
+    num: int = 80,
+) -> list[float]:
+    """Return logarithmically spaced values without requiring numpy."""
+    if start <= 0 or stop <= 0:
+        raise ValueError("start and stop must be strictly positive.")
+
+    if num < 2:
+        return [float(start)]
+
+    log_start = math.log10(start)
+    log_stop = math.log10(stop)
+    step = (log_stop - log_start) / (num - 1)
+
+    return [10 ** (log_start + i * step) for i in range(num)]
+
+
+def discharge_cutoff_sensitivity(
+    q: pd.DataFrame | pd.Series,
+    *,
+    volume_func: Callable[[pd.DataFrame | pd.Series], float] | None = None,
+    cutoffs: Sequence[float] | None = None,
+    plot: bool = False,
+    break_threshold: float | str = "auto",
+    min_break_fraction: float = 0.02,
+    robust_k: float = 6.0,
+) -> tuple[pd.DataFrame, dict[str, float] | None, float]:
+    """Evaluate how discharge volume changes when small values are zeroed.
+
+    Parameters
+    ----------
+    q : pandas.DataFrame or pandas.Series
+        Discharge time series in m3/s.
+
+    volume_func : callable, optional
+        Function used to compute volume from the cleaned discharge series.
+        If omitted, signed step integration is used.
+
+    cutoffs : sequence of float, optional
+        Discharge cutoffs in m3/s. Values with ``abs(Q) < cutoff`` are set
+        to zero.
+
+    plot : bool, default False
+        If True, plot volume as a function of cutoff.
+
+    break_threshold : {"auto"} or float, default "auto"
+        Threshold applied to ``break_score``. If "auto", a robust threshold
+        is computed from the median absolute deviation of consecutive volume
+        jumps.
+
+    min_break_fraction : float, default 0.02
+        Minimum relative jump required to detect a break. For example, 0.02
+        means at least 2% of the reference volume.
+
+    robust_k : float, default 6.0
+        Sensitivity factor used when ``break_threshold="auto"``. Larger values
+        are less sensitive.
+
+    Returns
+    -------
+    sensitivity : pandas.DataFrame
+        Table with cutoff, volume, active fraction, volume jump, break score,
+        and break flag.
+
+    first_break : dict or None
+        First row where ``break_score`` exceeds the computed threshold.
+
+    computed_break_threshold : float
+        Final break threshold used.
+    """
+    if cutoffs is None:
+        cutoffs = _default_logspace(1e-8, 1e-1, 80)
+
+    if volume_func is None:
+        volume_func = _default_step_volume_m3
+
+    rows: list[dict[str, float]] = []
+
+    for cutoff in cutoffs:
+        cutoff = float(cutoff)
+        q_clean = q.mask(q.abs() < cutoff, 0.0)
+
+        volume_m3 = float(volume_func(q_clean))
+
+        active_fraction = (q_clean.abs() > 0).mean()
+
+        if isinstance(active_fraction, pd.Series):
+            active_fraction = active_fraction.mean()
+
+        rows.append(
+            {
+                "cutoff_m3s": cutoff,
+                "volume_m3": volume_m3,
+                "active_fraction": float(active_fraction),
+            }
+        )
+
+    sensitivity = pd.DataFrame(rows)
+
+    sensitivity["previous_cutoff_m3s"] = sensitivity["cutoff_m3s"].shift()
+    sensitivity["previous_volume_m3"] = sensitivity["volume_m3"].shift()
+
+    sensitivity["delta_volume_m3"] = (
+        sensitivity["volume_m3"] - sensitivity["previous_volume_m3"]
+    )
+
+    sensitivity["abs_delta_volume_m3"] = (
+        sensitivity["delta_volume_m3"].abs()
+    )
+
+    initial_volume = abs(float(sensitivity["volume_m3"].iloc[0]))
+    volume_range = float(
+        sensitivity["volume_m3"].max() - sensitivity["volume_m3"].min()
+    )
+
+    scale = max(initial_volume, volume_range, 1e-300)
+
+    sensitivity["break_score"] = (
+        sensitivity["abs_delta_volume_m3"] / scale
+    )
+
+    if break_threshold == "auto":
+        scores = sensitivity["break_score"].dropna()
+
+        if scores.empty:
+            computed_break_threshold = float(min_break_fraction)
+        else:
+            median_jump = float(scores.median())
+            mad_jump = float((scores - median_jump).abs().median())
+            robust_sigma = 1.4826 * mad_jump
+
+            automatic_threshold = median_jump + robust_k * robust_sigma
+
+            computed_break_threshold = max(
+                automatic_threshold,
+                float(min_break_fraction),
+            )
+    else:
+        computed_break_threshold = float(break_threshold)
+
+    sensitivity["is_break"] = (
+        sensitivity["break_score"] > computed_break_threshold
+    )
+
+    break_rows = sensitivity.loc[sensitivity["is_break"]]
+
+    if break_rows.empty:
+        first_break = None
+    else:
+        first_break = {
+            key: float(value)
+            for key, value in break_rows.iloc[0].to_dict().items()
+            if pd.notna(value)
+        }
+
+    if plot:
+        ax = sensitivity.plot(
+            x="cutoff_m3s",
+            y="volume_m3",
+            logx=True,
+            marker="o",
+        )
+
+        if first_break is not None:
+            ax.axvline(
+                first_break["cutoff_m3s"],
+                linestyle="--",
+            )
+
+    return sensitivity, first_break, computed_break_threshold
 
 class Res1D:
     """Read MIKE 1D ``.res1d`` files with lazy, per-series caching.
