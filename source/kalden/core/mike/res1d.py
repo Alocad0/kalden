@@ -1115,163 +1115,163 @@ class Res1D:
     
         return _apply_cutoff(frame.copy())
 
-        def combine_series(
-            self,
-            refs: Iterable[SeriesRef] | None = None,
-            *,
-            object_type: str | None = None,
-            object_ids: Iterable[str] | None = None,
-            quantity: str | None = None,
-            force_refresh: bool = False,
-            cutoff: float | None = None,
-            total_column: str = "total",
-            join: str = "outer",
-            errors: str = "raise",
-        ) -> pd.DataFrame:
-            """Read several result series, concatenate them, and add a total column.
-    
-            Series are read with :meth:`read_series`, so on-disk caching,
-            ``force_refresh``, and ``cutoff`` are handled consistently.
-    
-            Parameters
-            ----------
-            refs : iterable of SeriesRef, optional
-                Explicit series references to combine.
-            object_type : str, optional
-                Object type used with ``object_ids`` and ``quantity``.
-            object_ids : iterable of str, optional
-                Object identifiers to read.
-            quantity : str, optional
-                Quantity to read for each object ID.
-            force_refresh : bool, default False
-                Force rereading from the result file instead of cache.
-            cutoff : float, optional
-                Passed to :meth:`read_series`.
-            total_column : str, default "total"
-                Name of the summed output column.
-            join : {"outer", "inner"}, default "outer"
-                How to align time indexes when concatenating.
-            errors : {"raise", "warn", "ignore"}, default "raise"
-                Error handling for individual failed series reads.
-    
-            Returns
-            -------
-            pandas.DataFrame
-                One column per requested series plus ``total_column``.
-            """
-            if errors not in {"raise", "warn", "ignore"}:
-                raise ValueError("errors must be one of: raise, warn, ignore")
-    
-            if join not in {"outer", "inner"}:
-                raise ValueError("join must be one of: outer, inner")
-    
-            if refs is None:
-                if object_type is None or object_ids is None or quantity is None:
-                    raise ValueError(
-                        "Pass either refs, or object_type, object_ids, and quantity."
-                    )
-    
-                normalized_type = _normalize_object_type(object_type)
-                ref_list = [
-                    SeriesRef(
-                        object_type=normalized_type,
-                        object_id=_normalize_object_id_for_type(
-                            normalized_type,
-                            object_id,
-                        ),
-                        quantity=str(quantity),
-                    )
-                    for object_id in object_ids
-                ]
-            else:
-                if object_type is not None or object_ids is not None or quantity is not None:
-                    raise ValueError(
-                        "Pass either refs, or object_type/object_ids/quantity, not both."
-                    )
-    
-                ref_list = [
-                    SeriesRef(
-                        object_type=_normalize_object_type(ref.object_type),
-                        object_id=_normalize_object_id_for_type(
-                            ref.object_type,
-                            ref.object_id,
-                        ),
-                        quantity=str(ref.quantity),
-                    )
-                    for ref in refs
-                ]
-    
-            if not ref_list:
-                return pd.DataFrame(columns=[total_column]).rename_axis("time")
-    
-            use_object_id_as_column = (
-                len({(ref.object_type, ref.quantity) for ref in ref_list}) == 1
-            )
-    
-            frames: list[pd.DataFrame] = []
-            used_columns: set[str] = set()
-    
-            for ref in ref_list:
-                try:
-                    frame = self.read_series(
-                        ref.object_type,
-                        ref.object_id,
-                        ref.quantity,
-                        force_refresh=force_refresh,
-                        cutoff=cutoff,
-                    )
-                except Exception as exc:
-                    message = (
-                        f"Could not read {ref.object_type}/"
-                        f"{ref.object_id}/{ref.quantity}: {exc}"
-                    )
-    
-                    if errors == "raise":
-                        raise RuntimeError(message) from exc
-                    if errors == "warn":
-                        warnings.warn(message, stacklevel=2)
-                    continue
-    
-                base_column = (
-                    str(ref.object_id)
-                    if use_object_id_as_column
-                    else f"{ref.object_type}_{ref.object_id}_{ref.quantity}"
-                )
-    
-                if frame.shape[1] == 1:
-                    renamed = frame.rename(columns={frame.columns[0]: base_column})
-                else:
-                    renamed = frame.add_prefix(f"{base_column}_")
-    
-                columns: list[str] = []
-                for column in renamed.columns:
-                    candidate = str(column)
-    
-                    if candidate == total_column or candidate in used_columns:
-                        suffix = 2
-                        while (
-                            f"{candidate}_{suffix}" == total_column
-                            or f"{candidate}_{suffix}" in used_columns
-                        ):
-                            suffix += 1
-                        candidate = f"{candidate}_{suffix}"
-    
-                    used_columns.add(candidate)
-                    columns.append(candidate)
-    
-                renamed.columns = columns
-                frames.append(renamed)
-    
-            if not frames:
-                return pd.DataFrame(columns=[total_column]).rename_axis("time")
-    
-            combined = pd.concat(frames, axis=1, join=join).sort_index()
-            combined.index.name = "time"
-    
-            numeric_values = combined.apply(pd.to_numeric, errors="coerce")
-            combined[total_column] = numeric_values.sum(axis=1, min_count=1)
-    
-            return combined
+      def combine_series(
+          self,
+          refs: Iterable[SeriesRef] | None = None,
+          *,
+          object_type: str | None = None,
+          object_ids: Iterable[str] | None = None,
+          quantity: str | None = None,
+          force_refresh: bool = False,
+          cutoff: float | None = None,
+          total_column: str = "total",
+          join: str = "outer",
+          errors: str = "raise",
+      ) -> pd.DataFrame:
+          """Read several result series, concatenate them, and add a total column.
+  
+          Series are read with :meth:`read_series`, so on-disk caching,
+          ``force_refresh``, and ``cutoff`` are handled consistently.
+  
+          Parameters
+          ----------
+          refs : iterable of SeriesRef, optional
+              Explicit series references to combine.
+          object_type : str, optional
+              Object type used with ``object_ids`` and ``quantity``.
+          object_ids : iterable of str, optional
+              Object identifiers to read.
+          quantity : str, optional
+              Quantity to read for each object ID.
+          force_refresh : bool, default False
+              Force rereading from the result file instead of cache.
+          cutoff : float, optional
+              Passed to :meth:`read_series`.
+          total_column : str, default "total"
+              Name of the summed output column.
+          join : {"outer", "inner"}, default "outer"
+              How to align time indexes when concatenating.
+          errors : {"raise", "warn", "ignore"}, default "raise"
+              Error handling for individual failed series reads.
+  
+          Returns
+          -------
+          pandas.DataFrame
+              One column per requested series plus ``total_column``.
+          """
+          if errors not in {"raise", "warn", "ignore"}:
+              raise ValueError("errors must be one of: raise, warn, ignore")
+  
+          if join not in {"outer", "inner"}:
+              raise ValueError("join must be one of: outer, inner")
+  
+          if refs is None:
+              if object_type is None or object_ids is None or quantity is None:
+                  raise ValueError(
+                      "Pass either refs, or object_type, object_ids, and quantity."
+                  )
+  
+              normalized_type = _normalize_object_type(object_type)
+              ref_list = [
+                  SeriesRef(
+                      object_type=normalized_type,
+                      object_id=_normalize_object_id_for_type(
+                          normalized_type,
+                          object_id,
+                      ),
+                      quantity=str(quantity),
+                  )
+                  for object_id in object_ids
+              ]
+          else:
+              if object_type is not None or object_ids is not None or quantity is not None:
+                  raise ValueError(
+                      "Pass either refs, or object_type/object_ids/quantity, not both."
+                  )
+  
+              ref_list = [
+                  SeriesRef(
+                      object_type=_normalize_object_type(ref.object_type),
+                      object_id=_normalize_object_id_for_type(
+                          ref.object_type,
+                          ref.object_id,
+                      ),
+                      quantity=str(ref.quantity),
+                  )
+                  for ref in refs
+              ]
+  
+          if not ref_list:
+              return pd.DataFrame(columns=[total_column]).rename_axis("time")
+  
+          use_object_id_as_column = (
+              len({(ref.object_type, ref.quantity) for ref in ref_list}) == 1
+          )
+  
+          frames: list[pd.DataFrame] = []
+          used_columns: set[str] = set()
+  
+          for ref in ref_list:
+              try:
+                  frame = self.read_series(
+                      ref.object_type,
+                      ref.object_id,
+                      ref.quantity,
+                      force_refresh=force_refresh,
+                      cutoff=cutoff,
+                  )
+              except Exception as exc:
+                  message = (
+                      f"Could not read {ref.object_type}/"
+                      f"{ref.object_id}/{ref.quantity}: {exc}"
+                  )
+  
+                  if errors == "raise":
+                      raise RuntimeError(message) from exc
+                  if errors == "warn":
+                      warnings.warn(message, stacklevel=2)
+                  continue
+  
+              base_column = (
+                  str(ref.object_id)
+                  if use_object_id_as_column
+                  else f"{ref.object_type}_{ref.object_id}_{ref.quantity}"
+              )
+  
+              if frame.shape[1] == 1:
+                  renamed = frame.rename(columns={frame.columns[0]: base_column})
+              else:
+                  renamed = frame.add_prefix(f"{base_column}_")
+  
+              columns: list[str] = []
+              for column in renamed.columns:
+                  candidate = str(column)
+  
+                  if candidate == total_column or candidate in used_columns:
+                      suffix = 2
+                      while (
+                          f"{candidate}_{suffix}" == total_column
+                          or f"{candidate}_{suffix}" in used_columns
+                      ):
+                          suffix += 1
+                      candidate = f"{candidate}_{suffix}"
+  
+                  used_columns.add(candidate)
+                  columns.append(candidate)
+  
+              renamed.columns = columns
+              frames.append(renamed)
+  
+          if not frames:
+              return pd.DataFrame(columns=[total_column]).rename_axis("time")
+  
+          combined = pd.concat(frames, axis=1, join=join).sort_index()
+          combined.index.name = "time"
+  
+          numeric_values = combined.apply(pd.to_numeric, errors="coerce")
+          combined[total_column] = numeric_values.sum(axis=1, min_count=1)
+  
+          return combined
   
     def iter_series(
         self,
