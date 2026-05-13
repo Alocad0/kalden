@@ -1118,10 +1118,10 @@ class Res1D:
     def combine_series(
         self,
         refs: Iterable[SeriesRef] | None = None,
-        *,
         object_type: str | None = None,
         object_ids: Iterable[str] | None = None,
         quantity: str | None = None,
+        *,
         force_refresh: bool = False,
         cutoff: float | None = None,
         total_column: str = "total",
