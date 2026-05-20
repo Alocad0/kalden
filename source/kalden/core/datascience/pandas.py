@@ -508,26 +508,194 @@ class DataFrameUtils:
     @staticmethod
     def compute_volume(
         df: pd.DataFrame,
-        discharge_column: str = "Q",
-        volume_column: str | None = None,
-        cumsum_column: str | None = None,
-    ) -> pd.DataFrame:
-        """Add per-timestep and cumulative volume columns based on a discharge column."""
-        if volume_column is None:
-            volume_column = discharge_column + "_volume"
+        discharge_column: str | list[str] | None = "Q",
+        unit: str = "m3/s",
+        method: str = "step",
+    ) -> tuple[pd.DataFrame, pd.Series]:
+        """
+        Compute timestep, cumulative, and total volumes from discharge time series.
 
-        if cumsum_column is None:
-            cumsum_column = discharge_column + "_volume_cumsum"
+        This method integrates one or more discharge columns over time using the
+        DataFrame's DatetimeIndex. It returns both a detailed volume DataFrame and
+        the total integrated volume for each discharge column.
+
+        Parameters
+        ----------
+        df : pd.DataFrame
+            Input DataFrame containing discharge time series.
+
+            The DataFrame must have a pandas DatetimeIndex. The index represents
+            the timestamps of the discharge values and is sorted internally before
+            integration.
+
+        discharge_column : str, list of str, or None, default "Q"
+            Column or columns containing discharge values.
+
+            If a string is provided, only that column is integrated.
+
+            If a list of strings is provided, all listed columns are integrated.
+
+            If None is provided, all columns in the DataFrame are integrated.
+
+        unit : {"m3/s", "l/s"}, default "m3/s"
+            Unit of the discharge values.
+
+            - "m3/s" means cubic metres per second.
+            - "l/s" means litres per second.
+
+            When `unit="l/s"`, values are converted internally to m³/s before
+            integration.
+
+        method : {"step", "trapezoidal"}, default "step"
+            Integration method.
+
+            - "step"
+                Assumes each discharge value remains constant until the next
+                timestamp.
+
+                The volume assigned to timestamp `t_i` is calculated over the
+                interval `[t_i, t_{i+1})`.
+
+                The final timestamp contributes zero volume because no following
+                timestamp is available.
+
+            - "trapezoidal"
+                Assumes discharge varies linearly between consecutive timestamps.
+
+                The volume assigned to timestamp `t_i` is calculated over the
+                interval `(t_{i-1}, t_i]`, using the mean discharge between
+                `t_{i-1}` and `t_i`.
+
+                The first timestamp contributes zero volume because no previous
+                timestamp is available.
+
+        Returns
+        -------
+        volume_df : pd.DataFrame
+            DataFrame with the same DatetimeIndex as the input.
+
+            The returned DataFrame has a two-level column index:
+
+            - "volume_m3"
+                Volume per timestep, in m³.
+
+            - "cumulative_volume_m3"
+                Accumulated volume up to and including each timestep, in m³.
+
+            The second column level contains the original discharge column names.
+
+        total_volume : pd.Series
+            Total integrated volume per discharge column, in m³.
+
+            This is equivalent to:
+
+            ```
+            volume_df["volume_m3"].sum()
+            ```
+
+            or:
+
+            ```
+            volume_df["cumulative_volume_m3"].iloc[-1]
+            ```
+
+        Raises
+        ------
+        TypeError
+            If `df` is not a pandas DataFrame.
+            If `df.index` is not a pandas DatetimeIndex.
+
+        ValueError
+            If `unit` is not "m3/s" or "l/s".
+            If `method` is not "step" or "trapezoidal".
+            If one or more requested discharge columns are missing.
+
+        Notes
+        -----
+        This method does not extrapolate beyond the provided timestamps.
+
+        For the "step" method, the final discharge value is not assigned a
+        volume unless an explicit following timestamp exists. If the final value
+        should apply over a known duration, append an explicit final timestamp
+        before calling this method.
+        """
+        if not isinstance(df, pd.DataFrame):
+            raise TypeError("df must be a pandas DataFrame.")
 
         if not isinstance(df.index, pd.DatetimeIndex):
-            raise TypeError("Index must be a DatetimeIndex")
+            raise TypeError("df index must be a pandas DatetimeIndex.")
 
-        df = df.copy()
-        dt = df.index.to_series().diff().dt.total_seconds()
-        df[volume_column] = df[discharge_column] * dt
-        df.iloc[0, df.columns.get_loc(volume_column)] = float("nan")
-        df[cumsum_column] = df[volume_column].cumsum()
-        return df
+        if unit not in ["m3/s", "l/s"]:
+            raise ValueError('unit must be "m3/s" or "l/s".')
+
+        if method not in ["step", "trapezoidal"]:
+            raise ValueError('method must be "step" or "trapezoidal".')
+
+        df = df.sort_index().copy()
+
+        if discharge_column is None:
+            discharge = df.copy()
+        else:
+            if isinstance(discharge_column, str):
+                discharge_columns = [discharge_column]
+            else:
+                discharge_columns = list(discharge_column)
+
+            missing_columns = [
+                column for column in discharge_columns if column not in df.columns
+            ]
+
+            if missing_columns:
+                raise ValueError(
+                    "The following discharge columns are missing from df: "
+                    f"{missing_columns}"
+                )
+
+            discharge = df[discharge_columns].copy()
+
+        if unit == "l/s":
+            discharge = discharge / 1000
+
+        if method == "step":
+            dt_seconds = (
+                discharge.index
+                .to_series()
+                .diff()
+                .dt.total_seconds()
+                .shift(-1)
+                .fillna(0)
+            )
+
+            volume_per_timestep = discharge.multiply(dt_seconds, axis=0)
+
+        else:
+            dt_seconds = (
+                discharge.index
+                .to_series()
+                .diff()
+                .dt.total_seconds()
+                .fillna(0)
+            )
+
+            mean_discharge = (discharge + discharge.shift(1)) / 2
+            volume_per_timestep = (
+                mean_discharge
+                .multiply(dt_seconds, axis=0)
+                .fillna(0)
+            )
+
+        cumulative_volume = volume_per_timestep.cumsum()
+        total_volume = volume_per_timestep.sum()
+
+        volume_df = pd.concat(
+            {
+                "volume_m3": volume_per_timestep,
+                "cumulative_volume_m3": cumulative_volume,
+            },
+            axis=1,
+        )
+
+        return volume_df, total_volume
 
     @staticmethod
     def split_column_by_distribution(
@@ -720,13 +888,18 @@ def df_duplicate_year(df, start_year, end_year):
     return DataFrameUtils.duplicate_year(df, start_year=start_year, end_year=end_year)
 
 
-def df_compute_volume(df, discharge_column="Q", volume_column=None, cumsum_column=None):
+def df_compute_volume(
+    df,
+    discharge_column="Q",
+    unit="m3/s",
+    method="step",
+):
     """Compatibility wrapper for ``DataFrameUtils.compute_volume()``."""
     return DataFrameUtils.compute_volume(
         df,
         discharge_column=discharge_column,
-        volume_column=volume_column,
-        cumsum_column=cumsum_column,
+        unit=unit,
+        method=method,
     )
 
 
