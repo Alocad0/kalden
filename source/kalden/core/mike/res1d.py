@@ -1809,6 +1809,7 @@ class Res1D:
         default_reducer: str = "max",
         default_output_path: str = "summary.gpkg",
         show_progress: bool = True,
+        write_spatial_cache: bool = False,
     ) -> Any:
         """Return a notebook widget for exporting aggregated spatial summaries."""
         from .res1d_widgets import res1d_summary_export_widget
@@ -1821,6 +1822,7 @@ class Res1D:
             default_reducer=default_reducer,
             default_output_path=default_output_path,
             show_progress=show_progress,
+            write_spatial_cache=write_spatial_cache,
         )
 
     def max_reach_filling_gdf(
