@@ -8,6 +8,7 @@ lazily inside the functions that need them.
 
 from __future__ import annotations
 
+from pathlib import Path
 from collections.abc import Sequence
 from typing import Any
 
@@ -610,14 +611,15 @@ def res1d_summary_export_widget(
         object_type = object_type_dropdown.value
         quantity = quantity_dropdown.value
         reducer = reducer_dropdown.value
-        output_path = Path(output_path_text.value.strip()).expanduser()
+        raw_output_path = output_path_text.value.strip()
         layer_name = layer_name_text.value.strip() or f"{reducer}_{object_type}_{quantity}"
         output_column = output_column_text.value.strip() or None
-    
+
         with output:
-            if not output_path:
+            if not raw_output_path:
                 print("Please provide an output GeoPackage path.")
                 return
+            output_path = Path(raw_output_path).expanduser()
     
             if not object_type or not quantity or not reducer:
                 print("Please select an object type, quantity, and reducer.")
