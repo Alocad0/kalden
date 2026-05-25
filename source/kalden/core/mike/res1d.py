@@ -1545,19 +1545,40 @@ class Res1D:
             return None
         return LineString(coordinates)
 
-    def _build_spatial_rows(self, object_type: str) -> list[dict[str, Any]]:
+    def _build_spatial_rows(
+        self,
+        object_type: str,
+        *,
+        show_progress: bool = False,
+    ) -> list[dict[str, Any]]:
         """Build spatial-index rows for one public object type."""
-
         normalized = _normalize_object_type(object_type)
         rows: list[dict[str, Any]] = []
-
-        for ref, item in self._iter_object_items(normalized):
+    
+        items = list(self._iter_object_items(normalized))
+        iterator = items
+    
+        if show_progress:
+            try:
+                from tqdm.auto import tqdm
+    
+                iterator = tqdm(
+                    items,
+                    total=len(items),
+                    desc=f"building {normalized} geometries",
+                    leave=True,
+                )
+            except Exception:
+                iterator = items
+    
+        for ref, item in iterator:
             quantities = _public_readable_quantities(item)
             geometry = (
                 self._node_geometry(item)
                 if normalized == "node"
                 else self._reach_geometry(item)
             )
+    
             rows.append(
                 {
                     "object_type": ref.object_type,
@@ -1568,7 +1589,7 @@ class Res1D:
                     "geometry": geometry,
                 }
             )
-
+    
         return rows
 
     def build_spatial_index(
@@ -1612,11 +1633,12 @@ class Res1D:
 
     def spatial_index(
         self,
-        object_type: str = "node",
+        object_type: str,
         *,
         force_refresh: bool = False,
+        show_progress: bool = False,
     ) -> Any:
-        """Return a spatial index GeoDataFrame for one object type."""
+        """Return a cached/built GeoDataFrame for one object type."""
         normalized = _normalize_object_type(object_type)
         stem = self._spatial_cache_stem(normalized)
     
@@ -1629,8 +1651,13 @@ class Res1D:
     
         gpd, _line_string, _point = _require_spatial_dependencies()
     
+        rows = self._build_spatial_rows(
+            normalized,
+            show_progress=show_progress,
+        )
+    
         gdf = gpd.GeoDataFrame(
-            self._build_spatial_rows(normalized),
+            rows,
             geometry="geometry",
             crs=self.crs,
         )
@@ -1697,7 +1724,9 @@ class Res1D:
         gdf = self.spatial_index(
             normalized_type,
             force_refresh=force_refresh,
+            show_progress=show_progress,
         ).copy()
+      
         if gdf.empty:
             gdf[value_column] = []
             return gdf
