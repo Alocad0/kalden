@@ -1676,10 +1676,9 @@ class Res1D:
             print(f"Writing {normalized} spatial cache...")
 
         if write_spatial_cache:
+            if show_progress and self.cache:
+                print(f"Writing {normalized} spatial cache...")
             self._write_spatial_cache(gdf, stem)
-    
-        if show_progress:
-            print(f"{normalized.capitalize()} spatial index ready.")
     
         return gdf
   
@@ -1821,6 +1820,7 @@ class Res1D:
             default_quantity=default_quantity,
             default_reducer=default_reducer,
             default_output_path=default_output_path,
+            show_progress=show_progress,
         )
 
     def max_reach_filling_gdf(
