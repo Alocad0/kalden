@@ -1789,6 +1789,7 @@ class Res1D:
         default_quantity: str | None = None,
         default_reducer: str = "max",
         default_output_path: str = "summary.gpkg",
+        show_progress: bool = True,
     ) -> Any:
         """Return a notebook widget for exporting aggregated spatial summaries."""
         from .res1d_widgets import res1d_summary_export_widget
