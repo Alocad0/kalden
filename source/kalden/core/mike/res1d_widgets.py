@@ -581,6 +581,12 @@ def res1d_summary_export_widget(
 
     output = widgets.Output()
 
+    state = {
+        "last_export_path": None,
+        "last_layer_name": None,
+        "last_output_column": None,
+    }
+
     def refresh_quantities(*_):
         object_type = object_type_dropdown.value
         new_quantities = explorer.available_quantities(object_type=object_type)
@@ -641,7 +647,11 @@ def res1d_summary_export_widget(
                 print("Writing GeoPackage...")
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 gdf.to_file(output_path, layer=layer_name, driver="GPKG")
-    
+                
+                state["last_export_path"] = output_path
+                state["last_layer_name"] = layer_name
+                state["last_output_column"] = output_column
+                
                 print(f"Exported: {output_path}")
                 print(f"Layer: {layer_name}")
     
@@ -663,7 +673,17 @@ def res1d_summary_export_widget(
         ]
     )
 
-    return widgets.VBox([controls, output])
+    widget = widgets.VBox([controls, output])
+
+    widget.output_path_text = output_path_text
+    widget.layer_name_text = layer_name_text
+    widget.quantity_dropdown = quantity_dropdown
+    widget.reducer_dropdown = reducer_dropdown
+    widget.object_type_dropdown = object_type_dropdown
+    widget.last_export_path = None
+    widget.last_layer_name = None
+    
+    return widget
 
 
 
