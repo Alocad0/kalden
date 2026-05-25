@@ -1641,20 +1641,29 @@ class Res1D:
         """Return a cached/built GeoDataFrame for one object type."""
         normalized = _normalize_object_type(object_type)
         stem = self._spatial_cache_stem(normalized)
-    
+
         if not force_refresh:
+            if show_progress:
+                print(f"Loading cached {normalized} spatial index...")
+    
             cached = self._read_spatial_cache(stem)
+    
             if cached is not None:
                 if self.crs is not None and cached.crs is None:
                     cached = cached.set_crs(self.crs)
+                if show_progress:
+                    print(f"Loaded cached {normalized} spatial index.")
                 return cached
     
         gpd, _line_string, _point = _require_spatial_dependencies()
     
-        rows = self._build_spatial_rows(
-            normalized,
-            show_progress=show_progress,
-        )
+        if show_progress:
+            print(f"Building {normalized} spatial rows...")
+    
+        rows = self._build_spatial_rows(normalized)
+    
+        if show_progress:
+            print(f"Creating {normalized} GeoDataFrame...")
     
         gdf = gpd.GeoDataFrame(
             rows,
@@ -1662,9 +1671,16 @@ class Res1D:
             crs=self.crs,
         )
     
+        if show_progress and self.cache:
+            print(f"Writing {normalized} spatial cache...")
+    
         self._write_spatial_cache(gdf, stem)
+    
+        if show_progress:
+            print(f"{normalized.capitalize()} spatial index ready.")
+    
         return gdf
-
+  
     def nodes_gdf(self, *, force_refresh: bool = False) -> Any:
         """Return the node spatial index as a GeoDataFrame."""
 
