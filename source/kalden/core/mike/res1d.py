@@ -1612,31 +1612,29 @@ class Res1D:
 
     def spatial_index(
         self,
-        object_type: str,
+        object_type: str = "node",
         *,
         force_refresh: bool = False,
     ) -> Any:
-        """Return a cached/built GeoDataFrame for one object type.
-
-        ``object_type`` can be ``"node"``, ``"reach"``, ``"weir"``, or
-        ``"pump"``. Values are not read from the result file; this contains only
-        IDs, source IDs, readable quantity names, and geometry.
-        """
-
+        """Return a spatial index GeoDataFrame for one object type."""
         normalized = _normalize_object_type(object_type)
         stem = self._spatial_cache_stem(normalized)
-
+    
         if not force_refresh:
             cached = self._read_spatial_cache(stem)
             if cached is not None:
+                if self.crs is not None and cached.crs is None:
+                    cached = cached.set_crs(self.crs)
                 return cached
-
+    
         gpd, _line_string, _point = _require_spatial_dependencies()
+    
         gdf = gpd.GeoDataFrame(
             self._build_spatial_rows(normalized),
             geometry="geometry",
             crs=self.crs,
         )
+    
         self._write_spatial_cache(gdf, stem)
         return gdf
 
