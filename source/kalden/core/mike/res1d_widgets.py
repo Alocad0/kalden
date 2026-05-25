@@ -495,6 +495,7 @@ def res1d_summary_export_widget(
     default_reducer="max",
     default_output_path="summary.gpkg",
     show_progress = True,
+    write_spatial_cache=False,
 ):
     """Return a Jupyter widget for exporting aggregated RES1D results to GPKG."""
 
@@ -632,6 +633,7 @@ def res1d_summary_export_widget(
                     output_column=output_column,
                     force_refresh=force_refresh_checkbox.value,
                     show_progress=show_progress,
+                    write_spatial_cache=write_spatial_cache,
                 )
     
                 print("Writing GeoPackage...")
