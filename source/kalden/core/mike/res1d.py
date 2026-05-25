@@ -1637,6 +1637,7 @@ class Res1D:
         *,
         force_refresh: bool = False,
         show_progress: bool = False,
+        write_spatial_cache: bool = True,
     ) -> Any:
         """Return a cached/built GeoDataFrame for one object type."""
         normalized = _normalize_object_type(object_type)
@@ -1673,8 +1674,9 @@ class Res1D:
     
         if show_progress and self.cache:
             print(f"Writing {normalized} spatial cache...")
-    
-        self._write_spatial_cache(gdf, stem)
+
+        if write_spatial_cache:
+            self._write_spatial_cache(gdf, stem)
     
         if show_progress:
             print(f"{normalized.capitalize()} spatial index ready.")
@@ -1702,6 +1704,7 @@ class Res1D:
         drop_empty_geometry: bool = True,
         errors: str = "warn",
         show_progress: bool = False,
+        write_spatial_cache: bool = False,
     ) -> Any:
         """Return a GeoDataFrame with one aggregated value per object.
 
@@ -1741,6 +1744,7 @@ class Res1D:
             normalized_type,
             force_refresh=force_refresh,
             show_progress=show_progress,
+            write_spatial_cache=write_spatial_cache,
         ).copy()
       
         if gdf.empty:
