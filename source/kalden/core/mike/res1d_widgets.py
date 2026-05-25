@@ -605,38 +605,42 @@ def res1d_summary_export_widget(
 
     def export_selected(*_):
         output.clear_output(wait=True)
-
+    
         object_type = object_type_dropdown.value
         quantity = quantity_dropdown.value
         reducer = reducer_dropdown.value
-        output_path = output_path_text.value.strip()
-        layer_name = layer_name_text.value.strip() or None
+        output_path = Path(output_path_text.value.strip()).expanduser()
+        layer_name = layer_name_text.value.strip() or f"{reducer}_{object_type}_{quantity}"
         output_column = output_column_text.value.strip() or None
-
+    
         with output:
             if not output_path:
                 print("Please provide an output GeoPackage path.")
                 return
-
+    
             if not object_type or not quantity or not reducer:
                 print("Please select an object type, quantity, and reducer.")
                 return
-
+    
             try:
-                exported = explorer.export_summary_gpkg(
-                    output_path,
+                print("Computing spatial summary...")
+    
+                gdf = explorer.summary_gdf(
                     quantity=quantity,
                     object_type=object_type,
                     reducer=reducer,
                     output_column=output_column,
-                    layer_name=layer_name,
                     force_refresh=force_refresh_checkbox.value,
                     show_progress=show_progress,
                 )
-
-                print(f"Exported: {exported}")
-                print(f"Layer: {layer_name or f'{reducer}_{object_type}_{quantity}'}")
-
+    
+                print("Writing GeoPackage...")
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                gdf.to_file(output_path, layer=layer_name, driver="GPKG")
+    
+                print(f"Exported: {output_path}")
+                print(f"Layer: {layer_name}")
+    
             except Exception as exc:
                 print(f"Could not export selected summary: {exc}")
 
