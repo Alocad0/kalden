@@ -494,6 +494,7 @@ def res1d_summary_export_widget(
     default_quantity=None,
     default_reducer="max",
     default_output_path="summary.gpkg",
+    show_progress = True,
 ):
     """Return a Jupyter widget for exporting aggregated RES1D results to GPKG."""
 
@@ -630,7 +631,7 @@ def res1d_summary_export_widget(
                     output_column=output_column,
                     layer_name=layer_name,
                     force_refresh=force_refresh_checkbox.value,
-                    show_progress=True,
+                    show_progress=show_progress,
                 )
 
                 print(f"Exported: {exported}")
