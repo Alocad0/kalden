@@ -1755,6 +1755,26 @@ class Res1D:
             gdf = gdf[gdf.geometry.notna()].copy()
         return gdf
 
+    def summary_export_widget(
+        self,
+        object_types: Sequence[str] = DEFAULT_OBJECT_TYPES,
+        default_object_type: str = "reach",
+        default_quantity: str | None = None,
+        default_reducer: str = "max",
+        default_output_path: str = "summary.gpkg",
+    ) -> Any:
+        """Return a notebook widget for exporting aggregated spatial summaries."""
+        from .res1d_widgets import res1d_summary_export_widget
+    
+        return res1d_summary_export_widget(
+            self,
+            object_types=object_types,
+            default_object_type=default_object_type,
+            default_quantity=default_quantity,
+            default_reducer=default_reducer,
+            default_output_path=default_output_path,
+        )
+
     def max_reach_filling_gdf(
         self,
         *,
@@ -1765,7 +1785,10 @@ class Res1D:
         errors: str = "warn",
         show_progress: bool = False,
     ) -> Any:
-        """Return reach geometries with a ``max_filling`` attribute.
+        """
+        Deprecated since addition of summary_export_widget
+        
+        Return reach geometries with a ``max_filling`` attribute.
 
         This is a convenience wrapper for the notebook pattern that computed the
         maximum ``ReachFilling`` value per reach before exporting to GIS.
