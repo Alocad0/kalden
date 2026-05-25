@@ -486,3 +486,177 @@ def res1d_timeseries_widget(
 
     update_plot()
     return widget
+
+def res1d_summary_export_widget(
+    explorer,
+    object_types=("node", "reach", "weir", "pump"),
+    default_object_type="reach",
+    default_quantity=None,
+    default_reducer="max",
+    default_output_path="summary.gpkg",
+):
+    """Return a Jupyter widget for exporting aggregated RES1D results to GPKG."""
+
+    widgets, display = _require_ipywidgets()
+
+    available_types = set(explorer.available_object_types())
+    selectable_types = [
+        object_type for object_type in object_types
+        if object_type in available_types
+    ]
+
+    if not selectable_types:
+        raise ValueError(
+            "No matching object types are available. "
+            f"Available types are: {sorted(available_types)}"
+        )
+
+    if default_object_type not in selectable_types:
+        default_object_type = selectable_types[0]
+
+    quantities = explorer.available_quantities(object_type=default_object_type)
+
+    if not quantities:
+        raise ValueError(
+            f"No quantities found for object_type={default_object_type!r}."
+        )
+
+    if default_quantity not in quantities:
+        default_quantity = quantities[0]
+
+    object_type_dropdown = widgets.Dropdown(
+        options=selectable_types,
+        value=default_object_type,
+        description="Type:",
+        layout=widgets.Layout(width="240px"),
+    )
+
+    quantity_dropdown = widgets.Dropdown(
+        options=quantities,
+        value=default_quantity,
+        description="Quantity:",
+        layout=widgets.Layout(width="360px"),
+    )
+
+    reducer_dropdown = widgets.Dropdown(
+        options=("max", "min", "mean", "last"),
+        value=default_reducer,
+        description="Reducer:",
+        layout=widgets.Layout(width="240px"),
+    )
+
+    output_path_text = widgets.Text(
+        value=default_output_path,
+        description="GPKG:",
+        layout=widgets.Layout(width="640px"),
+    )
+
+    layer_name_text = widgets.Text(
+        value=f"{default_reducer}_{default_object_type}_{default_quantity}",
+        description="Layer:",
+        layout=widgets.Layout(width="640px"),
+    )
+
+    output_column_text = widgets.Text(
+        value="",
+        placeholder="leave empty for automatic name",
+        description="Column:",
+        layout=widgets.Layout(width="640px"),
+    )
+
+    force_refresh_checkbox = widgets.Checkbox(
+        value=False,
+        description="Force refresh",
+        indent=False,
+    )
+
+    export_button = widgets.Button(
+        description="Export",
+        button_style="success",
+        tooltip="Export aggregated results to GeoPackage.",
+    )
+
+    output = widgets.Output()
+
+    def refresh_quantities(*_):
+        object_type = object_type_dropdown.value
+        new_quantities = explorer.available_quantities(object_type=object_type)
+        quantity_dropdown.options = new_quantities
+
+        if new_quantities:
+            quantity_dropdown.value = (
+                quantity_dropdown.value
+                if quantity_dropdown.value in new_quantities
+                else new_quantities[0]
+            )
+        else:
+            quantity_dropdown.value = None
+
+        refresh_layer_name()
+
+    def refresh_layer_name(*_):
+        object_type = object_type_dropdown.value
+        quantity = quantity_dropdown.value
+        reducer = reducer_dropdown.value
+
+        if object_type and quantity and reducer:
+            layer_name_text.value = f"{reducer}_{object_type}_{quantity}"
+
+    def export_selected(*_):
+        output.clear_output(wait=True)
+
+        object_type = object_type_dropdown.value
+        quantity = quantity_dropdown.value
+        reducer = reducer_dropdown.value
+        output_path = output_path_text.value.strip()
+        layer_name = layer_name_text.value.strip() or None
+        output_column = output_column_text.value.strip() or None
+
+        with output:
+            if not output_path:
+                print("Please provide an output GeoPackage path.")
+                return
+
+            if not object_type or not quantity or not reducer:
+                print("Please select an object type, quantity, and reducer.")
+                return
+
+            try:
+                exported = explorer.export_summary_gpkg(
+                    output_path,
+                    quantity=quantity,
+                    object_type=object_type,
+                    reducer=reducer,
+                    output_column=output_column,
+                    layer_name=layer_name,
+                    force_refresh=force_refresh_checkbox.value,
+                    show_progress=True,
+                )
+
+                print(f"Exported: {exported}")
+                print(f"Layer: {layer_name or f'{reducer}_{object_type}_{quantity}'}")
+
+            except Exception as exc:
+                print(f"Could not export selected summary: {exc}")
+
+    object_type_dropdown.observe(refresh_quantities, names="value")
+    quantity_dropdown.observe(refresh_layer_name, names="value")
+    reducer_dropdown.observe(refresh_layer_name, names="value")
+    export_button.on_click(export_selected)
+
+    controls = widgets.VBox(
+        [
+            widgets.HBox([object_type_dropdown, quantity_dropdown, reducer_dropdown]),
+            output_path_text,
+            layer_name_text,
+            output_column_text,
+            widgets.HBox([force_refresh_checkbox, export_button]),
+        ]
+    )
+
+    return widgets.VBox([controls, output])
+
+
+
+
+
