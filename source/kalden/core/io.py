@@ -18,61 +18,68 @@ PathLike = Union[str, Path]
 
 
 def hello(name: str) -> str:
-    """For testing purposes"""
+    """For testing purposes."""
     return f"Hello, {name}!"
 
 # -------------------------  DIRECTORY  ------------------------------------
-def ensure_dir_exists(dir_path: str | os.PathLike) -> None:
+
+def ensure_dir_exists(dir_path: PathLike) -> None:
     """
     Ensure that the directory path exists.
     If the directory (or any of its parents) does not exist, it is created.
 
     Parameters
-        dir_path : str | os.PathLike
-            Path to a directory should be ensured to exist.
+    ----------
+    dir_path : str | Path
+        Path to a directory that should be ensured to exist.
     """
     dir_path = Path(dir_path)
     if not dir_path.is_dir():
         dir_path.mkdir(parents=True, exist_ok=True)
 
-def ensure_file_dir_exists(file_path: str | os.PathLike) -> None:
+
+def ensure_file_dir_exists(file_path: PathLike) -> None:
     """
     Ensure that the parent directory of the given file path exists.
     If the directory (or any of its parents) does not exist, it is created.
 
     Parameters
-        file_path : str | os.PathLike
-            Path to a file whose parent directory should be ensured to exist.
+    ----------
+    file_path : str | Path
+        Path to a file whose parent directory should be ensured to exist.
     """
     dir_path = Path(file_path).parent
     ensure_dir_exists(dir_path)
 
-def is_dir_empty(dir_path: str) -> bool:
+
+def is_dir_empty(dir_path: PathLike) -> bool:
     """Return True if the directory is empty, False otherwise."""
     return len(os.listdir(dir_path)) == 0
 
+
 # def empty_dir(folder_path):
 #     folder = Path(folder_path)
-
+#
 #     if not folder.exists():
 #         raise FileNotFoundError(f"Folder does not exist: {folder}")
-
+#
 #     if not folder.is_dir():
 #         raise NotADirectoryError(f"Not a folder: {folder}")
-
+#
 #     for item in folder.iterdir():
 #         if item.is_dir():
 #             shutil.rmtree(item)
 #         else:
 #             item.unlink()
 
-def empty_dir(dir_path: str | os.PathLike, missing_ok: bool = False) -> None:
+
+def empty_dir(dir_path: PathLike, missing_ok: bool = False) -> None:
     """
     Remove all contents of a directory without deleting the directory itself.
 
     Parameters
     ----------
-    dir_path : str | os.PathLike
+    dir_path : str | Path
         Path to the directory to empty.
     missing_ok : bool, default=False
         If True, do nothing when the directory does not exist.
@@ -101,20 +108,25 @@ def empty_dir(dir_path: str | os.PathLike, missing_ok: bool = False) -> None:
         else:
             child.unlink()
 
+
 # -------------------------  FILE  ------------------------------------
-def file_exists(file_path: str | os.PathLike) -> bool:
+
+def file_exists(file_path: PathLike) -> bool:
     """
     Check whether a file exists at the given path.
 
     Parameters
-        file_path : str | os.PathLike
-            Path to the file to check.
+    ----------
+    file_path : str | Path
+        Path to the file to check.
 
     Returns
-        bool
-            True if the file exists and is a regular file, otherwise False.
+    -------
+    bool
+        True if the file exists and is a regular file, otherwise False.
     """
     return Path(file_path).is_file()
+
 
 def create_temp_dir(prefix: str = "tmp_", base_dir: Optional[PathLike] = None) -> Path:
     """
@@ -143,21 +155,30 @@ def delete_temp_dir(temp_dir: PathLike, ignore_errors: bool = False) -> None:
 
     Parameters
     ----------
-    temp_dir : str or Path
+    temp_dir : str | Path
         Path to the temporary directory.
     ignore_errors : bool, optional
         If True, suppress deletion errors.
-
-    Returns
-    -------
-    None
     """
     shutil.rmtree(Path(temp_dir), ignore_errors=ignore_errors)
 
-def detect_file_encoding(file_path):
-    """Détecte l'encodage d'un fichier"""
-    with open(file_path, 'rb') as f:
-        raw_data = f.read(1024 * 100)  # Premier 100KB suffisent
+
+def detect_file_encoding(file_path: PathLike) -> Optional[str]:
+    """
+    Detect the text encoding of a file.
+
+    Parameters
+    ----------
+    file_path : str | Path
+        Path to the file to inspect.
+
+    Returns
+    -------
+    str | None
+        The detected encoding, or None if it cannot be determined.
+    """
+    with open(file_path, "rb") as f:
+        raw_data = f.read(1024 * 100)
         result = chardet.detect(raw_data)
-    return result['encoding']
+    return result.get("encoding")
 
