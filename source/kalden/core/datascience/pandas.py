@@ -368,36 +368,166 @@ class DataFrameUtils:
         df: pd.DataFrame,
         exclude: list[str] | None = None,
         copy: bool = True,
+        normalize_numeric_strings: bool = False,
+        decimal_separator: str = "mixed",
     ) -> pd.DataFrame:
-        """
-        Convert object/string columns to float when all non-null/non-empty
+        """Convert object/string columns to float when all non-null/non-empty
         values in the column can be converted to numeric.
+    
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame to process.
+        exclude : list[str], optional
+            Columns to leave untouched.
+        copy : bool, default True
+            Whether to return a copy.
+        normalize_numeric_strings : bool, default False
+            If True, normalize numeric strings before conversion. This allows
+            values using comma or dot decimal separators, as well as common
+            thousands separators.
+        decimal_separator : {".", ",", "mixed"}, default "mixed"
+            Decimal separator strategy used when normalize_numeric_strings=True.
+            - "." assumes dot decimal and comma thousands.
+            - "," assumes comma decimal and dot thousands.
+            - "mixed" infers the decimal separator per value.
         """
         if copy:
             df = df.copy()
-
+    
         if exclude is None:
             exclude = []
-
+    
         for col in df.columns:
             if col in exclude:
                 continue
-
+    
             if not (
                 pd.api.types.is_object_dtype(df[col])
                 or pd.api.types.is_string_dtype(df[col])
             ):
                 continue
-
+    
             cleaned = df[col].replace(r"^\s*$", pd.NA, regex=True)
-            converted = pd.to_numeric(cleaned, errors="coerce")
-
+    
+            if normalize_numeric_strings:
+                numeric_input = cleaned.map(
+                    lambda value: DataFrameUtils._normalize_numeric_value(
+                        value,
+                        decimal_separator=decimal_separator,
+                    )
+                )
+            else:
+                numeric_input = cleaned
+    
+            converted = pd.to_numeric(numeric_input, errors="coerce")
             had_value = cleaned.notna()
-
+    
             if converted[had_value].notna().all():
                 df[col] = converted.astype(float)
-
+    
         return df
+
+    @staticmethod
+    def _normalize_numeric_value(value, decimal_separator: str = "mixed"):
+        """Normalize numeric strings before pd.to_numeric.
+    
+        Supports:
+        - 23.2
+        - 23,2
+        - 1,234.56
+        - 1.234,56
+        - 1 234,56
+        - 1'234.56
+    
+        Parameters
+        ----------
+        value : object
+            Cell value.
+        decimal_separator : {".", ",", "mixed"}, default "mixed"
+            Decimal separator strategy.
+            - "." assumes dot decimal and comma thousands.
+            - "," assumes comma decimal and dot thousands.
+            - "mixed" infers per value.
+        """
+        if pd.isna(value):
+            return pd.NA
+    
+        if isinstance(value, (int, float, np.number)):
+            return value
+    
+        text = str(value).strip()
+    
+        if text == "":
+            return pd.NA
+    
+        # Remove common thousands spacing separators
+        text = (
+            text.replace("\u00a0", "")
+            .replace("\u202f", "")
+            .replace(" ", "")
+            .replace("'", "")
+            .replace("’", "")
+        )
+    
+        # Support accounting-style negative values: (123,45)
+        if text.startswith("(") and text.endswith(")"):
+            text = "-" + text[1:-1]
+    
+        match = re.fullmatch(r"([+-]?)(.*?)([eE][+-]?\d+)?", text)
+    
+        if not match:
+            return text
+    
+        sign, mantissa, exponent = match.groups()
+        exponent = exponent or ""
+    
+        if not re.fullmatch(r"\d*([,.]\d*)*", mantissa):
+            return text
+    
+        def looks_like_grouped_integer(number: str, sep: str) -> bool:
+            parts = number.split(sep)
+            return (
+                len(parts) > 1
+                and parts[0].isdigit()
+                and 1 <= len(parts[0]) <= 3
+                and all(part.isdigit() and len(part) == 3 for part in parts[1:])
+            )
+    
+        has_comma = "," in mantissa
+        has_dot = "." in mantissa
+    
+        if decimal_separator not in {".", ",", "mixed"}:
+            raise ValueError('decimal_separator must be ".", "," or "mixed".')
+    
+        if decimal_separator == "mixed":
+            if has_comma and has_dot:
+                # The rightmost separator is usually the decimal mark:
+                # 1,234.56 -> dot
+                # 1.234,56 -> comma
+                decimal_mark = "," if mantissa.rfind(",") > mantissa.rfind(".") else "."
+            elif has_comma:
+                # 23,2 -> decimal comma
+                # 1,234,567 -> thousands grouping
+                decimal_mark = None if looks_like_grouped_integer(mantissa, ",") else ","
+            elif has_dot:
+                # 23.2 -> decimal dot
+                # 1.234.567 -> thousands grouping
+                decimal_mark = None if looks_like_grouped_integer(mantissa, ".") else "."
+            else:
+                decimal_mark = "."
+        else:
+            decimal_mark = decimal_separator
+    
+        if decimal_mark is None:
+            mantissa = mantissa.replace(",", "").replace(".", "")
+        elif decimal_mark == ",":
+            mantissa = mantissa.replace(".", "")
+            mantissa = mantissa.replace(",", ".")
+        else:
+            mantissa = mantissa.replace(",", "")
+    
+        return f"{sign}{mantissa}{exponent}"
 
     @staticmethod
     def resample(
@@ -831,12 +961,20 @@ def df_time_index_summary(df, plot=False):
     """Compatibility wrapper for ``DataFrameUtils.time_index_summary()``."""
     return DataFrameUtils.time_index_summary(df, plot=plot)
 
-def df_convert_numeric_like_columns(df, exclude=None, copy=True):
-    """Compatibility wrapper for ``DataFrameUtils.convert_numeric_like_columns()``."""
+def df_convert_numeric_like_columns(
+    df,
+    exclude=None,
+    copy=True,
+    normalize_numeric_strings=False,
+    decimal_separator="mixed",
+):
+    """Compatibility wrapper for DataFrameUtils.convert_numeric_like_columns()."""
     return DataFrameUtils.convert_numeric_like_columns(
         df,
         exclude=exclude,
         copy=copy,
+        normalize_numeric_strings=normalize_numeric_strings,
+        decimal_separator=decimal_separator,
     )
 
 def df_resample(
