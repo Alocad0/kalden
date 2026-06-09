@@ -203,6 +203,37 @@ def export_gdf(gdf, export_path, layer_name=None, export_file_type="gpkg", overw
       print(f"✗ Export failed: {e}")
       return False
 
+    def list_builtin_qml_styles(with_extension=False, print_styles=True):
+    """
+    List available packaged QML styles.
+
+    Args:
+        with_extension: If True, return names including '.qml'.
+            If False, return names usable directly with builtin_style.
+        print_styles: If True, print the available style names.
+
+    Returns:
+        list[str]: Available built-in style names.
+    """
+
+    styles_dir = files("kalden.styles")
+
+    styles = sorted(
+        resource.name if with_extension else resource.stem
+        for resource in styles_dir.iterdir()
+        if resource.is_file() and resource.name.endswith(".qml")
+    )
+
+    if print_styles:
+        if styles:
+            print("Available built-in QML styles:")
+            for style in styles:
+                print(f"  - {style}")
+        else:
+            print("No built-in QML styles found.")
+
+    return styles
+        
 def insert_qml_style_into_gpkg(
     gpkg_path,
     layer_name,
