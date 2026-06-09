@@ -41,6 +41,7 @@ import shutil
 import warnings
 
 import pandas as pd
+import numpy as np
 
 PathLike = str | OsPathLike[str]
 
