@@ -595,6 +595,249 @@ def discharge_cutoff_sensitivity(
 
     return sensitivity, first_break, computed_break_threshold
 
+def add_reach_hydraulics_from_strickler(
+    gdf: gpd.GeoDataFrame,
+    diameter_col: str,
+    filling_col: str,
+    slope_col: str = "I",
+    k_col: str = "K",
+) -> gpd.GeoDataFrame:
+    """
+    Compute reach velocity, discharge, and hydraulic properties using the
+    Strickler formula.
+
+    This function estimates the mean flow velocity in circular pipes from pipe
+    diameter, filling ratio, longitudinal slope, and Strickler roughness
+    coefficient. The wetted area, wetted perimeter, hydraulic radius, velocity,
+    kinetic head, and discharge are added to a copy of the input GeoDataFrame.
+
+    The filling value is interpreted as a dimensionless filling ratio ``h / D``,
+    where ``h`` is the water depth and ``D`` is the pipe diameter. It must not
+    be provided as a percentage.
+
+    For example, a filling ratio of ``0.5`` means a half-full pipe, ``1.0``
+    means an exactly full pipe, and ``1.2`` means a surcharged pipe.
+
+    For full or surcharged pipes, the hydraulic geometry is capped at the full
+    circular pipe section. Therefore, values greater than ``1.0`` are flagged
+    as surcharged but use the same wetted area, wetted perimeter, and hydraulic
+    radius as a full pipe.
+
+    Parameters
+    ----------
+    gdf : geopandas.GeoDataFrame
+        Input GeoDataFrame containing reach or pipe attributes. The input object
+        is not modified; a copy is returned with additional result columns.
+
+    diameter_col : str
+        Name of the column containing the internal pipe diameter in metres [m].
+
+    filling_col : str
+        Name of the column containing the filling ratio ``h / D`` [-].
+        This value is dimensionless and must be provided as a ratio, not as a
+        percentage. Use ``1.0`` for exactly full pipes.
+
+    slope_col : str, default "I"
+        Name of the column containing the pipe slope in percent [%]. The value
+        is converted internally to metres per metre [m/m] by dividing by 100.
+
+    k_col : str, default "K"
+        Name of the column containing the Strickler roughness coefficient
+        ``K`` [m^(1/3)/s]. Typical values depend on pipe material and condition.
+
+    Returns
+    -------
+    geopandas.GeoDataFrame
+        Copy of the input GeoDataFrame with the following additional columns:
+
+        ``h_m`` :
+            Water depth in metres, computed as ``filling_ratio * diameter``.
+
+        ``I_mpm`` :
+            Pipe slope converted to metres per metre [m/m].
+
+        ``is_surcharged`` :
+            Boolean flag indicating whether the filling ratio is greater than
+            ``1.0``.
+
+        ``A_m2`` :
+            Wetted cross-sectional area [m²].
+
+        ``P_m`` :
+            Wetted perimeter [m].
+
+        ``Rh_m`` :
+            Hydraulic radius [m], computed as ``A_m2 / P_m``.
+
+        ``V_ms`` :
+            Mean flow velocity [m/s], computed using the Strickler formula.
+
+        ``kinetic_head_m`` :
+            Velocity head [m], computed as ``V_ms ** 2 / (2 * g)``.
+
+        ``Q_m3s`` :
+            Discharge [m³/s], computed as ``V_ms * A_m2``.
+
+        ``Q_ls`` :
+            Discharge [L/s].
+
+    Notes
+    -----
+    The velocity is computed using the Strickler formula:
+
+    ``V = K * Rh ** (2 / 3) * sqrt(I)``
+
+    where ``V`` is the mean velocity [m/s], ``K`` is the Strickler coefficient
+    [m^(1/3)/s], ``Rh`` is the hydraulic radius [m], and ``I`` is the slope
+    [m/m].
+
+    Rows with missing or non-positive diameter, filling ratio, or Strickler
+    coefficient are ignored and keep ``NaN`` result values. Rows with missing or
+    negative slope are also ignored. A zero slope is accepted and results in
+    zero velocity.
+
+    The function assumes circular pipes. For partially full pipes, circular
+    segment geometry is used. For full and surcharged pipes, the hydraulic
+    geometry is capped at the full pipe section:
+
+    ``A = pi * D ** 2 / 4``
+
+    ``P = pi * D``
+
+    ``Rh = D / 4``
+
+    Examples
+    --------
+    Compute velocity using a simulated reach filling ratio:
+
+    >>> result = add_reach_hydraulics_from_strickler(
+    ...     gdf,
+    ...     diameter_col="diameter_m",
+    ...     filling_col="reach_filling",
+    ...     slope_col="I",
+    ...     k_col="K",
+    ... )
+
+    Compute velocity assuming all pipes are exactly full:
+
+    >>> gdf_full = gdf.copy()
+    >>> gdf_full["_filling_full"] = 1.0
+    >>> result = add_reach_hydraulics_from_strickler(
+    ...     gdf_full,
+    ...     diameter_col="diameter_m",
+    ...     filling_col="_filling_full",
+    ...     slope_col="I",
+    ...     k_col="K",
+    ... )
+    """
+    joined_gdf = gdf.copy()
+
+    # Read and cast input columns to numeric series.
+    diameter = joined_gdf[diameter_col].astype(float)
+    filling = joined_gdf[filling_col].astype(float)
+    strickler = joined_gdf[k_col].astype(float)
+
+    # Input slope is expected in percent and converted to m/m.
+    slope = joined_gdf[slope_col].astype(float) / 100.0
+
+    # Convert filling ratio h/D to water depth.
+    water_depth = filling * diameter
+    radius = diameter / 2.0
+
+    # Store basic interpreted quantities.
+    joined_gdf["h_m"] = water_depth
+    joined_gdf["I_mpm"] = slope
+    joined_gdf["is_surcharged"] = filling > 1.0
+
+    # Initialise result columns.
+    joined_gdf["A_m2"] = np.nan
+    joined_gdf["P_m"] = np.nan
+    joined_gdf["Rh_m"] = np.nan
+    joined_gdf["V_ms"] = np.nan
+
+    # Keep only rows with physically meaningful input values.
+    valid = (
+        diameter.notna()
+        & filling.notna()
+        & strickler.notna()
+        & slope.notna()
+        & (diameter > 0)
+        & (filling > 0)
+        & (strickler > 0)
+        & (slope >= 0)
+    )
+
+    partial = valid & (water_depth < diameter)
+    full = valid & (water_depth >= diameter)
+
+    # Compute circular segment geometry for partially full pipes.
+    theta = 2.0 * np.arccos(
+        (radius[partial] - water_depth[partial]) / radius[partial]
+    )
+
+    joined_gdf.loc[partial, "A_m2"] = (
+        radius[partial] ** 2 / 2.0 * (theta - np.sin(theta))
+    )
+
+    joined_gdf.loc[partial, "P_m"] = radius[partial] * theta
+
+    joined_gdf.loc[partial, "Rh_m"] = (
+        joined_gdf.loc[partial, "A_m2"]
+        / joined_gdf.loc[partial, "P_m"]
+    )
+
+    # Use full circular pipe geometry for full or surcharged pipes.
+    joined_gdf.loc[full, "A_m2"] = np.pi * diameter[full] ** 2 / 4.0
+    joined_gdf.loc[full, "P_m"] = np.pi * diameter[full]
+    joined_gdf.loc[full, "Rh_m"] = diameter[full] / 4.0
+
+    # Compute velocity only where hydraulic radius and slope are valid.
+    valid_velocity = (
+        joined_gdf["Rh_m"].notna()
+        & (joined_gdf["Rh_m"] > 0)
+        & joined_gdf["I_mpm"].notna()
+        & (joined_gdf["I_mpm"] >= 0)
+        & strickler.notna()
+        & (strickler > 0)
+    )
+
+    joined_gdf.loc[valid_velocity, "V_ms"] = (
+        strickler[valid_velocity]
+        * joined_gdf.loc[valid_velocity, "Rh_m"] ** (2 / 3)
+        * np.sqrt(joined_gdf.loc[valid_velocity, "I_mpm"])
+    )
+
+    # Compute velocity head.
+    gravity = 9.81
+    joined_gdf["kinetic_head_m"] = joined_gdf["V_ms"] ** 2 / (
+        2.0 * gravity
+    )
+
+    # Compute discharge.
+    joined_gdf["Q_m3s"] = joined_gdf["V_ms"] * joined_gdf["A_m2"]
+    joined_gdf["Q_ls"] = joined_gdf["Q_m3s"] * 1000.0
+
+    return joined_gdf
+
+def add_full_pipe_reach_hydraulics_from_strickler(
+    gdf,
+    diameter_col,
+    slope_col="I",
+    k_col="K",
+):
+    gdf = gdf.copy()
+    gdf["_full_filling_ratio"] = 1.0
+
+    result = add_reach_hydraulics_from_strickler(
+        gdf,
+        diameter_col=diameter_col,
+        filling_col="_full_filling_ratio",
+        slope_col=slope_col,
+        k_col=k_col,
+    )
+
+    return result.drop(columns="_full_filling_ratio")
+
 class Res1D:
     """Read MIKE 1D ``.res1d`` files with lazy, per-series caching.
 
