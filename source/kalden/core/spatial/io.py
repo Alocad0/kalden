@@ -203,7 +203,7 @@ def export_gdf(gdf, export_path, layer_name=None, export_file_type="gpkg", overw
       print(f"✗ Export failed: {e}")
       return False
 
-    def list_builtin_qml_styles(with_extension=False, print_styles=True):
+def list_builtin_qml_styles(with_extension=False, print_styles=True):
     """
     List available packaged QML styles.
 
