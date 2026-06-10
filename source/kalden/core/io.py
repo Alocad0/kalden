@@ -108,26 +108,6 @@ def empty_dir(dir_path: PathLike, missing_ok: bool = False) -> None:
         else:
             child.unlink()
 
-
-# -------------------------  FILE  ------------------------------------
-
-def file_exists(file_path: PathLike) -> bool:
-    """
-    Check whether a file exists at the given path.
-
-    Parameters
-    ----------
-    file_path : str | Path
-        Path to the file to check.
-
-    Returns
-    -------
-    bool
-        True if the file exists and is a regular file, otherwise False.
-    """
-    return Path(file_path).is_file()
-
-
 def create_temp_dir(prefix: str = "tmp_", base_dir: Optional[PathLike] = None) -> Path:
     """
     Create a temporary directory and return its path.
@@ -162,6 +142,32 @@ def delete_temp_dir(temp_dir: PathLike, ignore_errors: bool = False) -> None:
     """
     shutil.rmtree(Path(temp_dir), ignore_errors=ignore_errors)
 
+
+# -------------------------  FILE  ------------------------------------
+
+def file_exists(file_path: PathLike) -> bool:
+    """
+    Check whether a file exists at the given path.
+
+    Parameters
+    ----------
+    file_path : str | Path
+        Path to the file to check.
+
+    Returns
+    -------
+    bool
+        True if the file exists and is a regular file, otherwise False.
+    """
+    return Path(file_path).is_file()
+
+def file_has_content(file_path: str | Path) -> bool:
+    """
+    Detects if file is exists / is empty
+    Move to io.py
+    """
+    path = Path(file_path)
+    return path.exists() and path.is_file() and path.stat().st_size > 0
 
 def detect_file_encoding(file_path: PathLike) -> Optional[str]:
     """
