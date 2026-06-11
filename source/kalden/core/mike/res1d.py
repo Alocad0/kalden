@@ -28,6 +28,7 @@ Examples
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Sequence
+from typing import Any, TYPE_CHECKING
 from dataclasses import dataclass
 from os import PathLike as OsPathLike
 from pathlib import Path
@@ -42,6 +43,9 @@ import warnings
 
 import pandas as pd
 import numpy as np
+
+if TYPE_CHECKING:
+    import geopandas as gpd
 
 PathLike = str | OsPathLike[str]
 
@@ -386,9 +390,11 @@ def _select_reach_chainage(
         "outlet": "outlet",
         "downstream": "outlet",
         "end": "outlet",
-        "mean": "mean",
-        "avg": "mean",
-        "average": "mean",
+        "center": "center",
+        "middle": "center",
+        "mean": "center",
+        "avg": "center",
+        "average": "center",
     }
 
     try:
@@ -418,7 +424,7 @@ def _select_reach_chainage(
             "Use chainage='all' or check the column names."
         )
 
-    if chainage == "mean":
+    if chainage == "center":
         numeric = frame.apply(pd.to_numeric, errors="coerce")
         return numeric.mean(axis=1).to_frame(name=f"{quantity}:mean")
 
@@ -2045,7 +2051,7 @@ class Res1D:
         object_type: str = "node",
         reducer: str = "max",
         output_column: str | None = None,
-        chainage: str = "all"
+        chainage: str = "all",
         force_refresh: bool = False,
         drop_empty_geometry: bool = True,
         errors: str = "warn",
@@ -2178,6 +2184,7 @@ class Res1D:
         *,
         quantity: str = "ReachFilling",
         output_column: str = "max_filling",
+        chainage: str = "all",
         force_refresh: bool = False,
         drop_empty_geometry: bool = True,
         errors: str = "warn",
@@ -2197,6 +2204,7 @@ class Res1D:
             object_type="reach",
             reducer="max",
             output_column=output_column,
+            chainage=chainage,
             force_refresh=force_refresh,
             drop_empty_geometry=drop_empty_geometry,
             errors=errors,
@@ -2212,6 +2220,7 @@ class Res1D:
         reducer: str = "max",
         output_column: str | None = None,
         layer_name: str | None = None,
+        chainage: str = "all",
         force_refresh: bool = False,
         errors: str = "warn",
         show_progress: bool = False,
@@ -2223,6 +2232,7 @@ class Res1D:
             object_type=object_type,
             reducer=reducer,
             output_column=output_column,
+            chainage=chainage,
             force_refresh=force_refresh,
             errors=errors,
             show_progress=show_progress,
@@ -2241,6 +2251,7 @@ class Res1D:
         layer_name: str = "MaxReachFilling",
         quantity: str = "ReachFilling",
         output_column: str = "max_filling",
+        chainage: str = "all",
         force_refresh: bool = False,
         errors: str = "warn",
         show_progress: bool = False,
@@ -2254,6 +2265,7 @@ class Res1D:
         gdf = self.max_reach_filling_gdf(
             quantity=quantity,
             output_column=output_column,
+            chainage=chainage,
             force_refresh=force_refresh,
             errors=errors,
             show_progress=show_progress,
@@ -2270,6 +2282,7 @@ class Res1D:
         quantity: str,
         *,
         force_refresh: bool = False,
+        chainage: str = "all",
         value_columns: Sequence[str] | None = None,
         dropna: bool = False,
     ) -> pd.DataFrame:
@@ -2287,6 +2300,7 @@ class Res1D:
             object_id=object_id,
             quantity=quantity,
             force_refresh=force_refresh,
+            chainage=chainage,
         )
         return normalize_timeseries_for_plot(
             ts=ts,
