@@ -32,7 +32,6 @@ from typing import Any, TYPE_CHECKING
 from dataclasses import dataclass
 from os import PathLike as OsPathLike
 from pathlib import Path
-from typing import Any
 import math
 
 import hashlib
@@ -401,7 +400,7 @@ def _select_reach_chainage(
         chainage = aliases[chainage]
     except KeyError as exc:
         raise ValueError(
-            "chainage must be one of: 'all', 'inlet', 'outlet', 'mean'."
+            "chainage must be one of: 'all', 'inlet', 'outlet', 'center'."
         ) from exc
 
     if chainage == "all" or frame.shape[1] <= 1:
@@ -421,7 +420,7 @@ def _select_reach_chainage(
     if not valid_chainages:
         raise ValueError(
             "Could not infer chainages from result columns. "
-            "Use chainage='all' or check the column names."
+            "Use chainage='all', or only use inlet/outlet/mean for reach-style multi-chainage results."
         )
 
     if chainage == "center":
@@ -1395,7 +1394,7 @@ class Res1D:
 
         Parameters
         ----------
-        chainage : {"all", "inlet", "outlet", "mean"}, default "all"
+        chainage : {"all", "inlet", "outlet", "center"}, default "all"
             For reach results with several chainage columns, choose which
             chainage value to return.
 
