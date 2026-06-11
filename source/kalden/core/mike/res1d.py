@@ -369,14 +369,14 @@ def _chainage_from_column(column: object) -> float | None:
     except ValueError:
         return None
 
-def _select_reach_location(
+def _select_reach_chainage(
     frame: pd.DataFrame,
-    location: str,
+    chainage: str,
     *,
     quantity: str,
 ) -> pd.DataFrame:
     """Select inlet/outlet/mean/all from a multi-chainage reach result."""
-    location = location.strip().lower()
+    chainage = chainage.strip().lower()
 
     aliases = {
         "all": "all",
@@ -387,19 +387,18 @@ def _select_reach_location(
         "downstream": "outlet",
         "end": "outlet",
         "mean": "mean",
-        "men": "mean",  # typo-friendly
         "avg": "mean",
         "average": "mean",
     }
 
     try:
-        location = aliases[location]
+        chainage = aliases[chainage]
     except KeyError as exc:
         raise ValueError(
-            "location must be one of: 'all', 'inlet', 'outlet', 'mean'."
+            "chainage must be one of: 'all', 'inlet', 'outlet', 'mean'."
         ) from exc
 
-    if location == "all" or frame.shape[1] <= 1:
+    if chainage == "all" or frame.shape[1] <= 1:
         return frame
 
     chainages = {
@@ -416,20 +415,20 @@ def _select_reach_location(
     if not valid_chainages:
         raise ValueError(
             "Could not infer chainages from result columns. "
-            "Use location='all' or check the column names."
+            "Use chainage='all' or check the column names."
         )
 
-    if location == "mean":
+    if chainage == "mean":
         numeric = frame.apply(pd.to_numeric, errors="coerce")
         return numeric.mean(axis=1).to_frame(name=f"{quantity}:mean")
 
-    if location == "inlet":
+    if chainage == "inlet":
         selected_column = min(valid_chainages, key=valid_chainages.get)
         return frame[[selected_column]].rename(
             columns={selected_column: f"{quantity}:inlet"}
         )
 
-    # location == "outlet"
+    # chainage == "outlet"
     selected_column = max(valid_chainages, key=valid_chainages.get)
     return frame[[selected_column]].rename(
         columns={selected_column: f"{quantity}:outlet"}
@@ -441,7 +440,7 @@ def _require_spatial_dependencies():
     ``Res1D`` should remain importable without GeoPandas/Shapely. These
     dependencies are required only for spatial indexes and GeoPackage exports.
     """
-
+    
     try:
         import geopandas as gpd
         from shapely.geometry import LineString, Point
@@ -1384,13 +1383,13 @@ class Res1D:
         *,
         force_refresh: bool = False,
         cutoff: float | None = None,
-        location: str = "all",
+        chainage: str = "all",
     ) -> pd.DataFrame:
         """Read one result time series as a pandas DataFrame.
 
         Parameters
         ----------
-        location : {"all", "inlet", "outlet", "mean"}, default "all"
+        chainage : {"all", "inlet", "outlet", "mean"}, default "all"
             For reach results with several chainage columns, choose which
             chainage value to return.
 
@@ -1401,9 +1400,9 @@ class Res1D:
         """
 
         def _finalize(frame: pd.DataFrame) -> pd.DataFrame:
-            frame = _select_reach_location(
+            frame = _select_reach_chainage(
                 frame,
-                location,
+                chainage,
                 quantity=str(quantity),
             )
             if cutoff is None:
@@ -1467,6 +1466,7 @@ class Res1D:
         *,
         force_refresh: bool = False,
         cutoff: float | None = None,
+        chainage: str = "all",
         total_column: str = "total",
         join: str = "outer",
         errors: str = "raise",
@@ -1562,6 +1562,7 @@ class Res1D:
                     ref.quantity,
                     force_refresh=force_refresh,
                     cutoff=cutoff,
+                    chainage=chainage,
                 )
             except Exception as exc:
                 message = (
@@ -1621,6 +1622,7 @@ class Res1D:
         refs: Iterable[SeriesRef],
         *,
         force_refresh: bool = False,
+        chainage: str = "all",
         errors: str = "raise",
     ) -> Iterator[tuple[SeriesRef, pd.DataFrame]]:
         """Yield several series one by one to avoid building a huge DataFrame."""
@@ -1631,6 +1633,7 @@ class Res1D:
                     ref.object_type,
                     ref.object_id,
                     ref.quantity,
+                    chainage=chainage,
                     force_refresh=force_refresh,
                 )
             except Exception as exc:
@@ -2042,6 +2045,7 @@ class Res1D:
         object_type: str = "node",
         reducer: str = "max",
         output_column: str | None = None,
+        chainage: str = "all"
         force_refresh: bool = False,
         drop_empty_geometry: bool = True,
         errors: str = "warn",
@@ -2112,6 +2116,7 @@ class Res1D:
                     str(object_id),
                     quantity,
                     force_refresh=force_refresh,
+                    chainage=chainage,
                 )
                 numeric = series.select_dtypes(include="number")
                 if numeric.empty:
@@ -2299,6 +2304,7 @@ class Res1D:
         quantity: str,
         *,
         backend: str = "plotly",
+        chainage: str = "all",
         force_refresh: bool = False,
         title: str | None = None,
         value_columns: Sequence[str] | None = None,
@@ -2321,6 +2327,7 @@ class Res1D:
             object_type=object_type,
             object_id=object_id,
             quantity=quantity,
+            chainage=chainage,
             force_refresh=force_refresh,
         )
         return plot_timeseries(
