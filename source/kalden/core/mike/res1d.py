@@ -356,6 +356,84 @@ def _normalize_timeseries(data: pd.DataFrame | pd.Series) -> pd.DataFrame:
     frame.columns = [str(column) for column in frame.columns]
     return frame.sort_index()
 
+def _chainage_from_column(column: object) -> float | None:
+    """Extract the chainage from a MIKE result column name.
+
+    Expected examples:
+        Discharge:1145:28.2448
+        WaterLevel:pipe_id:84.7344
+    """
+    text = str(column)
+    try:
+        return float(text.rsplit(":", 1)[-1])
+    except ValueError:
+        return None
+
+def _select_reach_location(
+    frame: pd.DataFrame,
+    location: str,
+    *,
+    quantity: str,
+) -> pd.DataFrame:
+    """Select inlet/outlet/mean/all from a multi-chainage reach result."""
+    location = location.strip().lower()
+
+    aliases = {
+        "all": "all",
+        "inlet": "inlet",
+        "upstream": "inlet",
+        "start": "inlet",
+        "outlet": "outlet",
+        "downstream": "outlet",
+        "end": "outlet",
+        "mean": "mean",
+        "men": "mean",  # typo-friendly
+        "avg": "mean",
+        "average": "mean",
+    }
+
+    try:
+        location = aliases[location]
+    except KeyError as exc:
+        raise ValueError(
+            "location must be one of: 'all', 'inlet', 'outlet', 'mean'."
+        ) from exc
+
+    if location == "all" or frame.shape[1] <= 1:
+        return frame
+
+    chainages = {
+        column: _chainage_from_column(column)
+        for column in frame.columns
+    }
+
+    valid_chainages = {
+        column: chainage
+        for column, chainage in chainages.items()
+        if chainage is not None
+    }
+
+    if not valid_chainages:
+        raise ValueError(
+            "Could not infer chainages from result columns. "
+            "Use location='all' or check the column names."
+        )
+
+    if location == "mean":
+        numeric = frame.apply(pd.to_numeric, errors="coerce")
+        return numeric.mean(axis=1).to_frame(name=f"{quantity}:mean")
+
+    if location == "inlet":
+        selected_column = min(valid_chainages, key=valid_chainages.get)
+        return frame[[selected_column]].rename(
+            columns={selected_column: f"{quantity}:inlet"}
+        )
+
+    # location == "outlet"
+    selected_column = max(valid_chainages, key=valid_chainages.get)
+    return frame[[selected_column]].rename(
+        columns={selected_column: f"{quantity}:outlet"}
+    )
 
 def _require_spatial_dependencies():
     """Import spatial dependencies lazily.
@@ -1306,36 +1384,56 @@ class Res1D:
         *,
         force_refresh: bool = False,
         cutoff: float | None = None,
+        location: str = "all",
     ) -> pd.DataFrame:
-        """Read one result time series as a pandas DataFrame."""
-    
-        def _apply_cutoff(frame: pd.DataFrame) -> pd.DataFrame:
+        """Read one result time series as a pandas DataFrame.
+
+        Parameters
+        ----------
+        location : {"all", "inlet", "outlet", "mean"}, default "all"
+            For reach results with several chainage columns, choose which
+            chainage value to return.
+
+            "all" keeps the original multi-column result.
+            "inlet" returns the lowest-chainage column.
+            "outlet" returns the highest-chainage column.
+            "mean" returns the row-wise mean across chainages.
+        """
+
+        def _finalize(frame: pd.DataFrame) -> pd.DataFrame:
+            frame = _select_reach_location(
+                frame,
+                location,
+                quantity=str(quantity),
+            )
             if cutoff is None:
                 return frame
             return frame.mask(frame.abs() < cutoff, 0)
-    
+
         normalized_type = _normalize_object_type(object_type)
         normalized_id = _normalize_object_id_for_type(normalized_type, object_id)
+
         ref = SeriesRef(
             object_type=normalized_type,
             object_id=normalized_id,
             quantity=str(quantity),
         )
-    
+
         if not force_refresh and self.keep_in_memory and ref in self._memory_cache:
-            return _apply_cutoff(self._memory_cache[ref].copy())
-    
+            return _finalize(self._memory_cache[ref].copy())
+
         stem = self._series_cache_stem(ref)
+
         if not force_refresh:
             cached = self._read_dataframe_cache(stem)
             if cached is not None:
                 cached = _normalize_timeseries(cached)
                 if self.keep_in_memory:
                     self._memory_cache[ref] = cached
-                return _apply_cutoff(cached.copy())
-    
+                return _finalize(cached.copy())
+
         obj = self._lookup_object(ref.object_type, ref.object_id)
-    
+
         try:
             quantity_obj = _get_readable_quantity(obj, ref.quantity)
         except AttributeError as exc:
@@ -1343,21 +1441,22 @@ class Res1D:
                 f"{ref.object_type} {ref.object_id!r} has no quantity "
                 f"{ref.quantity!r}."
             ) from exc
-    
+
         read = getattr(quantity_obj, "read", None)
         if not callable(read):
             raise AttributeError(
                 f"{ref.object_type} {ref.object_id!r} quantity "
                 f"{ref.quantity!r} is not readable."
             )
-    
+
         frame = _normalize_timeseries(read())
+
         self._write_dataframe_cache(frame, stem)
-    
+
         if self.keep_in_memory:
             self._memory_cache[ref] = frame
-    
-        return _apply_cutoff(frame.copy())
+
+        return _finalize(frame.copy())
 
     def combine_series(
         self,
