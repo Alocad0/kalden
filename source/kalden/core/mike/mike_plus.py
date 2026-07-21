@@ -236,6 +236,121 @@ class MPlusModel:
             if con is not None:
                 con.close()
 
+    def fetch_table_attributes_geometry(
+        self,
+        table_name,
+        geometry_column="Geometry",
+        crs="EPSG:2056",
+    ):
+        """
+        Fetch all attributes and geometry from a spatial MIKE+ database table.
+    
+        Args:
+            table_name:
+                Name of the spatial table to query.
+            geometry_column:
+                Name of the spatial geometry column.
+            crs:
+                Coordinate reference system assigned to the GeoDataFrame.
+    
+        Returns:
+            A GeoDataFrame containing all table attributes and geometry,
+            or None if the operation fails.
+        """
+    
+        def quote_identifier(identifier):
+            """Safely quote an SQLite table or column identifier."""
+            return '"' + identifier.replace('"', '""') + '"'
+    
+        con = None
+    
+        try:
+            con = sqlite3.connect(self.db_path)
+            con.enable_load_extension(True)
+            con.execute('SELECT load_extension("mod_spatialite")')
+    
+            table_exists = con.execute(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type IN ('table', 'view')
+                  AND name = ?
+                """,
+                (table_name,),
+            ).fetchone()
+    
+            if table_exists is None:
+                raise ValueError(f"Table does not exist: {table_name}")
+    
+            quoted_table = quote_identifier(table_name)
+    
+            table_info = con.execute(
+                f"PRAGMA table_info({quoted_table})"
+            ).fetchall()
+    
+            column_names = [column[1] for column in table_info]
+    
+            geometry_matches = [
+                column
+                for column in column_names
+                if column.casefold() == geometry_column.casefold()
+            ]
+    
+            if not geometry_matches:
+                raise ValueError(
+                    f"Geometry column '{geometry_column}' was not found "
+                    f"in table '{table_name}'."
+                )
+    
+            actual_geometry_column = geometry_matches[0]
+    
+            attribute_columns = [
+                column
+                for column in column_names
+                if column.casefold() != actual_geometry_column.casefold()
+            ]
+    
+            select_expressions = [
+                quote_identifier(column)
+                for column in attribute_columns
+            ]
+    
+            select_expressions.append(
+                f"AsText({quote_identifier(actual_geometry_column)}) "
+                "AS wkt_geometry"
+            )
+    
+            query = f"""
+                SELECT
+                    {", ".join(select_expressions)}
+                FROM {quoted_table};
+            """
+    
+            df = pd.read_sql_query(query, con)
+    
+            df["geometry"] = df["wkt_geometry"].apply(
+                lambda value: loads(value)
+                if value is not None and value != ""
+                else None
+            )
+    
+            return gpd.GeoDataFrame(
+                df.drop(columns="wkt_geometry"),
+                geometry="geometry",
+                crs=crs,
+            )
+    
+        except Exception as exc:
+            print(
+                f"Could not fetch attributes and geometry from "
+                f"'{table_name}': {exc}"
+            )
+            return None
+    
+        finally:
+            if con is not None:
+                con.close()
+    
     @staticmethod
     def make_catchment_connection(row, col_geom_catch, col_geom_node):
         """
