@@ -7,8 +7,6 @@ Author: DEAO
 Created: 2026-01-15
 """
 
-from datetime import datetime
-import os
 import sqlite3
 
 import geopandas as gpd
@@ -202,6 +200,30 @@ class MPlusModel:
                 con.close()
 
     @staticmethod
+    def _resolve_column(dataframe, requested_column):
+        """
+        Return the actual DataFrame column matching a name case-insensitively.
+        """
+        matches = [
+            column
+            for column in dataframe.columns
+            if column.casefold() == requested_column.casefold()
+        ]
+    
+        if not matches:
+            raise ValueError(
+                f"Column '{requested_column}' was not found. "
+                f"Available columns: {list(dataframe.columns)}"
+            )
+    
+        if len(matches) > 1:
+            raise ValueError(
+                f"Multiple columns match '{requested_column}': {matches}"
+            )
+    
+        return matches[0]
+    
+    @staticmethod
     def build_link_geometries_from_nodes(
         nodes_gdf,
         links_df,
@@ -365,6 +387,7 @@ class MPlusModel:
             ValueError:
                 If the required columns are missing or validation fails.
         """
+
         if catchment_id_column not in catchments_gdf.columns:
             raise ValueError(
                 f"Column '{catchment_id_column}' was not found in "
