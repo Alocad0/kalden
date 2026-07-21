@@ -1,3 +1,3 @@
-from .interactive_map import GeoDataFrameViewer
+from .geopandas import GeoDataFrameViewer
 
 __all__ = ["GeoDataFrameViewer"]
