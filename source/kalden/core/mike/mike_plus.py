@@ -426,6 +426,129 @@ class MPlusModel:
         return LineString([catch_centroid, row[col_geom_node]])
 
     @staticmethod
+    def validate_catchment_connections(
+        catchments_gdf,
+        catchment_connections_gdf,
+        *,
+        catchment_id_column="muid",
+        connection_id_column="catchid",
+    ):
+        """
+        Validate that every catchment has exactly one connection.
+    
+        Checks that:
+    
+        1. No catchment has more than one connection.
+        2. Every catchment has a connection.
+        3. No connection references an unknown catchment.
+        4. Catchment and connection identifiers are not null.
+    
+        Args:
+            catchments_gdf:
+                DataFrame or GeoDataFrame containing the catchments.
+            catchment_connections_gdf:
+                DataFrame or GeoDataFrame containing catchment connections.
+            catchment_id_column:
+                Catchment identifier column in ``catchments_gdf``.
+            connection_id_column:
+                Catchment identifier column in
+                ``catchment_connections_gdf``.
+    
+        Returns:
+            True when the connections are valid.
+    
+        Raises:
+            ValueError:
+                If the required columns are missing or validation fails.
+        """
+        if catchment_id_column not in catchments_gdf.columns:
+            raise ValueError(
+                f"Column '{catchment_id_column}' was not found in "
+                "catchments_gdf."
+            )
+    
+        if connection_id_column not in catchment_connections_gdf.columns:
+            raise ValueError(
+                f"Column '{connection_id_column}' was not found in "
+                "catchment_connections_gdf."
+            )
+    
+        catchment_ids = catchments_gdf[catchment_id_column]
+        connection_ids = catchment_connections_gdf[connection_id_column]
+    
+        errors = []
+    
+        null_catchment_count = int(catchment_ids.isna().sum())
+        null_connection_count = int(connection_ids.isna().sum())
+    
+        if null_catchment_count:
+            errors.append(
+                f"{null_catchment_count} catchment(s) have a null "
+                f"'{catchment_id_column}'."
+            )
+    
+        if null_connection_count:
+            errors.append(
+                f"{null_connection_count} connection(s) have a null "
+                f"'{connection_id_column}'."
+            )
+    
+        valid_catchment_ids = catchment_ids.dropna()
+        valid_connection_ids = connection_ids.dropna()
+    
+        connection_counts = valid_connection_ids.value_counts()
+    
+        multiple_connections = connection_counts[
+            connection_counts > 1
+        ].to_dict()
+    
+        if multiple_connections:
+            details = ", ".join(
+                f"{catchment_id} ({count})"
+                for catchment_id, count in multiple_connections.items()
+            )
+    
+            errors.append(
+                "Catchments with multiple connections: "
+                f"{details}."
+            )
+    
+        catchment_id_set = set(valid_catchment_ids)
+        connection_id_set = set(valid_connection_ids)
+    
+        missing_connections = sorted(
+            catchment_id_set - connection_id_set,
+            key=str,
+        )
+    
+        if missing_connections:
+            errors.append(
+                "Catchments without a connection: "
+                + ", ".join(map(str, missing_connections))
+                + "."
+            )
+    
+        unknown_catchments = sorted(
+            connection_id_set - catchment_id_set,
+            key=str,
+        )
+    
+        if unknown_catchments:
+            errors.append(
+                "Connections referencing unknown catchments: "
+                + ", ".join(map(str, unknown_catchments))
+                + "."
+            )
+    
+        if errors:
+            raise ValueError(
+                "Invalid catchment connections:\n- "
+                + "\n- ".join(errors)
+            )
+    
+        return True
+    
+    @staticmethod
     def upstream_analysis(
         catchments_connections_gdf,
         links_gdf,
