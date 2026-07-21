@@ -85,109 +85,6 @@ class MPlusModel:
             print(f"\n{len(table_names)} table(s) found.")
     
         return table_names
-    
-    @staticmethod
-    def build_link_geometries_from_nodes(
-        nodes_gdf,
-        links_df,
-        *,
-        node_id_column="MUID",
-        from_node_column="FromNodeID",
-        to_node_column="ToNodeID",
-    ):
-        """
-        Build straight link geometries from their endpoint node geometries.
-    
-        This is intended for link tables that do not contain usable stored
-        geometry. Existing link geometry from the database should generally
-        be preferred because it may contain intermediate vertices.
-        """
-        required_node_columns = {
-            node_id_column,
-            nodes_gdf.geometry.name,
-        }
-        required_link_columns = {
-            from_node_column,
-            to_node_column,
-        }
-    
-        missing_node_columns = required_node_columns - set(nodes_gdf.columns)
-        missing_link_columns = required_link_columns - set(links_df.columns)
-    
-        if missing_node_columns:
-            raise ValueError(
-                "Missing node columns: "
-                + ", ".join(sorted(missing_node_columns))
-            )
-    
-        if missing_link_columns:
-            raise ValueError(
-                "Missing link columns: "
-                + ", ".join(sorted(missing_link_columns))
-            )
-    
-        node_geometries = nodes_gdf[
-            [node_id_column, nodes_gdf.geometry.name]
-        ].rename(
-            columns={
-                node_id_column: from_node_column,
-                nodes_gdf.geometry.name: "_from_geometry",
-            }
-        )
-    
-        result = links_df.merge(
-            node_geometries,
-            on=from_node_column,
-            how="left",
-            validate="many_to_one",
-        )
-    
-        node_geometries = nodes_gdf[
-            [node_id_column, nodes_gdf.geometry.name]
-        ].rename(
-            columns={
-                node_id_column: to_node_column,
-                nodes_gdf.geometry.name: "_to_geometry",
-            }
-        )
-    
-        result = result.merge(
-            node_geometries,
-            on=to_node_column,
-            how="left",
-            validate="many_to_one",
-        )
-    
-        missing_endpoints = (
-            result["_from_geometry"].isna()
-            | result["_to_geometry"].isna()
-        )
-    
-        if missing_endpoints.any():
-            invalid_links = result.loc[
-                missing_endpoints,
-                [from_node_column, to_node_column],
-            ]
-    
-            raise ValueError(
-                f"{len(invalid_links)} link(s) reference missing node geometry."
-            )
-    
-        result["geometry"] = [
-            LineString([from_geometry, to_geometry])
-            for from_geometry, to_geometry in zip(
-                result["_from_geometry"],
-                result["_to_geometry"],
-            )
-        ]
-    
-        return gpd.GeoDataFrame(
-            result.drop(
-                columns=["_from_geometry", "_to_geometry"]
-            ),
-            geometry="geometry",
-            crs=nodes_gdf.crs,
-        )
 
     def fetch_table_attributes_geometry(
         self,
@@ -303,6 +200,109 @@ class MPlusModel:
         finally:
             if con is not None:
                 con.close()
+
+    @staticmethod
+    def build_link_geometries_from_nodes(
+        nodes_gdf,
+        links_df,
+        *,
+        node_id_column="MUID",
+        from_node_column="FromNodeID",
+        to_node_column="ToNodeID",
+    ):
+        """
+        Build straight link geometries from their endpoint node geometries.
+    
+        This is intended for link tables that do not contain usable stored
+        geometry. Existing link geometry from the database should generally
+        be preferred because it may contain intermediate vertices.
+        """
+        required_node_columns = {
+            node_id_column,
+            nodes_gdf.geometry.name,
+        }
+        required_link_columns = {
+            from_node_column,
+            to_node_column,
+        }
+    
+        missing_node_columns = required_node_columns - set(nodes_gdf.columns)
+        missing_link_columns = required_link_columns - set(links_df.columns)
+    
+        if missing_node_columns:
+            raise ValueError(
+                "Missing node columns: "
+                + ", ".join(sorted(missing_node_columns))
+            )
+    
+        if missing_link_columns:
+            raise ValueError(
+                "Missing link columns: "
+                + ", ".join(sorted(missing_link_columns))
+            )
+    
+        node_geometries = nodes_gdf[
+            [node_id_column, nodes_gdf.geometry.name]
+        ].rename(
+            columns={
+                node_id_column: from_node_column,
+                nodes_gdf.geometry.name: "_from_geometry",
+            }
+        )
+    
+        result = links_df.merge(
+            node_geometries,
+            on=from_node_column,
+            how="left",
+            validate="many_to_one",
+        )
+    
+        node_geometries = nodes_gdf[
+            [node_id_column, nodes_gdf.geometry.name]
+        ].rename(
+            columns={
+                node_id_column: to_node_column,
+                nodes_gdf.geometry.name: "_to_geometry",
+            }
+        )
+    
+        result = result.merge(
+            node_geometries,
+            on=to_node_column,
+            how="left",
+            validate="many_to_one",
+        )
+    
+        missing_endpoints = (
+            result["_from_geometry"].isna()
+            | result["_to_geometry"].isna()
+        )
+    
+        if missing_endpoints.any():
+            invalid_links = result.loc[
+                missing_endpoints,
+                [from_node_column, to_node_column],
+            ]
+    
+            raise ValueError(
+                f"{len(invalid_links)} link(s) reference missing node geometry."
+            )
+    
+        result["geometry"] = [
+            LineString([from_geometry, to_geometry])
+            for from_geometry, to_geometry in zip(
+                result["_from_geometry"],
+                result["_to_geometry"],
+            )
+        ]
+    
+        return gpd.GeoDataFrame(
+            result.drop(
+                columns=["_from_geometry", "_to_geometry"]
+            ),
+            geometry="geometry",
+            crs=nodes_gdf.crs,
+        )
     
     @staticmethod
     def build_catchment_connection_geometry(
