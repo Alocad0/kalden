@@ -171,6 +171,7 @@ class GeoDataFrameViewer:
             "width": width,
             "height": height,
             "control_scale": True,
+            "prefer_canvas": True,
             "style_kwds": {
                 "weight": 2,
                 "opacity": 0.9,
@@ -187,7 +188,6 @@ class GeoDataFrameViewer:
             },
             "map_kwds": {
                 "scrollWheelZoom": True,
-                "prefer_canvas": True,
             },
         }
 
