@@ -32,6 +32,60 @@ class MPlusModel:
         """
         self.db_path = db_path
 
+    def list_tables(
+        self,
+        contains: str | None = None,
+        *,
+        include_views: bool = False,
+        print_results: bool = True,
+    ) -> list[str]:
+        """
+        List tables available in the MIKE+ database.
+    
+        Args:
+            contains:
+                Optional case-insensitive substring used to filter table names.
+            include_views:
+                Whether to include database views.
+            print_results:
+                Whether to print each matching name.
+    
+        Returns:
+            Sorted list of matching table and optionally view names.
+        """
+        object_types = ("table", "view") if include_views else ("table",)
+    
+        placeholders = ", ".join("?" for _ in object_types)
+    
+        query = f"""
+            SELECT name
+            FROM sqlite_master
+            WHERE type IN ({placeholders})
+              AND name NOT LIKE 'sqlite_%'
+            ORDER BY name;
+        """
+    
+        with sqlite3.connect(self.db_path) as con:
+            rows = con.execute(query, object_types).fetchall()
+    
+        table_names = [row[0] for row in rows]
+    
+        if contains:
+            search_value = contains.casefold()
+            table_names = [
+                name
+                for name in table_names
+                if search_value in name.casefold()
+            ]
+    
+        if print_results:
+            for name in table_names:
+                print(name)
+    
+            print(f"\n{len(table_names)} table(s) found.")
+    
+        return table_names
+    
     @staticmethod
     def fetch_links_geometry(
         nodes_gdf,
