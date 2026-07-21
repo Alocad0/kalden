@@ -1025,6 +1025,53 @@ class Res1D:
         self._res = None
         self._memory_cache.clear()
 
+    def reload(
+        self,
+        *,
+        clear_cache: bool = False,
+        open_now: bool = False,
+    ) -> "Res1D":
+        """
+        Reset the result reader and optionally delete its cache.
+    
+        The underlying MIKE result handle is closed. Unless ``open_now`` is True,
+        the result file is opened lazily the next time it is accessed.
+    
+        Parameters
+        ----------
+        clear_cache : bool, default False
+            Delete cached metadata and time-series files associated with this
+            result file.
+        open_now : bool, default False
+            Reopen the result file immediately. When False, the existing lazy
+            loading behaviour is preserved.
+    
+        Returns
+        -------
+        Res1D
+            This instance, allowing method chaining.
+    
+        Examples
+        --------
+        Reset the reader while keeping its cache:
+    
+        >>> res.reload()
+    
+        Clear the cache and reopen immediately:
+    
+        >>> res.reload(clear_cache=True, open_now=True)
+        """
+        self.close()
+    
+        if clear_cache:
+            # close() already clears the in-memory cache.
+            self.clear_cache(include_memory=False)
+    
+        if open_now:
+            self.open()
+    
+        return self
+
     def __enter__(self) -> "Res1D":
         self.open()
         return self
@@ -1462,6 +1509,85 @@ class Res1D:
 
         return _finalize(frame.copy())
 
+    def try_read_series(
+        self,
+        object_type: str,
+        object_id: str,
+        quantity: str,
+        *,
+        force_refresh: bool = False,
+        cutoff: float | None = None,
+        chainage: str = "all",
+        errors: str = "warn",
+    ) -> pd.DataFrame | None:
+        """
+        Attempt to read one result series without necessarily stopping execution.
+    
+        This is the fault-tolerant counterpart to :meth:`read_series`.
+        The regular ``read_series`` method remains strict and raises errors
+        normally.
+    
+        Parameters
+        ----------
+        object_type : str
+            Result object type, such as ``"node"``, ``"reach"``, ``"weir"``,
+            ``"pump"``, or ``"catchment"``.
+        object_id : str
+            Identifier of the result object.
+        quantity : str
+            Result quantity to read.
+        force_refresh : bool, default False
+            Ignore an existing cached series and read it again from the result
+            file.
+        cutoff : float, optional
+            Set values whose absolute magnitude is below this value to zero.
+        chainage : {"all", "inlet", "outlet", "center"}, default "all"
+            Reach chainage selection passed to :meth:`read_series`.
+        errors : {"raise", "warn", "ignore"}, default "warn"
+            How to handle a failed read:
+    
+            - ``"raise"``: propagate the original exception.
+            - ``"warn"``: emit a warning and return ``None``.
+            - ``"ignore"``: return ``None`` silently.
+    
+        Returns
+        -------
+        pandas.DataFrame or None
+            The requested time series, or ``None`` when the read fails and
+            ``errors`` is not ``"raise"``.
+        """
+        if errors not in {"raise", "warn", "ignore"}:
+            raise ValueError(
+                "errors must be one of: 'raise', 'warn', 'ignore'."
+            )
+    
+        try:
+            return self.read_series(
+                object_type=object_type,
+                object_id=object_id,
+                quantity=quantity,
+                force_refresh=force_refresh,
+                cutoff=cutoff,
+                chainage=chainage,
+            )
+    
+        except Exception as exc:
+            if errors == "raise":
+                raise
+    
+            message = (
+                f"Could not read {object_type}/{object_id}/{quantity}: {exc}"
+            )
+    
+            if errors == "warn":
+                warnings.warn(
+                    message,
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+    
+            return None
+    
     def combine_series(
         self,
         refs: Iterable[SeriesRef] | None = None,
