@@ -87,208 +87,107 @@ class MPlusModel:
         return table_names
     
     @staticmethod
-    def fetch_links_geometry(
+    def build_link_geometries_from_nodes(
         nodes_gdf,
-        links_gdf,
-        node_suffix="_nodes",
-        link_suffix="_links",
+        links_df,
+        *,
+        node_id_column="MUID",
+        from_node_column="FromNodeID",
+        to_node_column="ToNodeID",
     ):
         """
-        Build link geometries from MIKE+ node and link tables.
-
-        Args:
-            nodes_gdf: GeoDataFrame containing node geometries and MUID identifiers.
-            links_gdf: GeoDataFrame or DataFrame containing FromNodeID and ToNodeID.
-            node_suffix: Suffix applied to columns coming from nodes.
-            link_suffix: Suffix applied to columns coming from links.
-
-        Returns:
-            GeoDataFrame with LineString geometries connecting upstream and downstream nodes.
+        Build straight link geometries from their endpoint node geometries.
+    
+        This is intended for link tables that do not contain usable stored
+        geometry. Existing link geometry from the database should generally
+        be preferred because it may contain intermediate vertices.
         """
-        links_gdf = links_gdf.drop_duplicates(
-            subset=["FromNodeID", "ToNodeID"]
-        ).copy()
-
-        nodes_from = nodes_gdf.rename(
+        required_node_columns = {
+            node_id_column,
+            nodes_gdf.geometry.name,
+        }
+        required_link_columns = {
+            from_node_column,
+            to_node_column,
+        }
+    
+        missing_node_columns = required_node_columns - set(nodes_gdf.columns)
+        missing_link_columns = required_link_columns - set(links_df.columns)
+    
+        if missing_node_columns:
+            raise ValueError(
+                "Missing node columns: "
+                + ", ".join(sorted(missing_node_columns))
+            )
+    
+        if missing_link_columns:
+            raise ValueError(
+                "Missing link columns: "
+                + ", ".join(sorted(missing_link_columns))
+            )
+    
+        node_geometries = nodes_gdf[
+            [node_id_column, nodes_gdf.geometry.name]
+        ].rename(
             columns={
-                "geometry": f"from_geom{node_suffix}",
-                "MUID": "FromNodeID",
+                node_id_column: from_node_column,
+                nodes_gdf.geometry.name: "_from_geometry",
             }
         )
-        nodes_to = nodes_gdf.rename(
+    
+        result = links_df.merge(
+            node_geometries,
+            on=from_node_column,
+            how="left",
+            validate="many_to_one",
+        )
+    
+        node_geometries = nodes_gdf[
+            [node_id_column, nodes_gdf.geometry.name]
+        ].rename(
             columns={
-                "geometry": f"to_geom{node_suffix}",
-                "MUID": "ToNodeID",
+                node_id_column: to_node_column,
+                nodes_gdf.geometry.name: "_to_geometry",
             }
         )
-
-        links_gdf = links_gdf.merge(
-            nodes_from,
-            on="FromNodeID",
-            suffixes=(link_suffix, node_suffix),
+    
+        result = result.merge(
+            node_geometries,
+            on=to_node_column,
+            how="left",
+            validate="many_to_one",
         )
-        links_gdf = links_gdf.merge(
-            nodes_to,
-            on="ToNodeID",
-            suffixes=(link_suffix, node_suffix),
+    
+        missing_endpoints = (
+            result["_from_geometry"].isna()
+            | result["_to_geometry"].isna()
         )
-
-        links_gdf["geometry"] = links_gdf.apply(
-            lambda row: LineString(
-                [
-                    row[f"from_geom{node_suffix}"],
-                    row[f"to_geom{node_suffix}"],
-                ]
-            ),
-            axis=1,
-        )
-
-        lines_gdf = gpd.GeoDataFrame(
-            links_gdf.drop(
-                [f"from_geom{node_suffix}", f"to_geom{node_suffix}"],
-                axis=1,
+    
+        if missing_endpoints.any():
+            invalid_links = result.loc[
+                missing_endpoints,
+                [from_node_column, to_node_column],
+            ]
+    
+            raise ValueError(
+                f"{len(invalid_links)} link(s) reference missing node geometry."
+            )
+    
+        result["geometry"] = [
+            LineString([from_geometry, to_geometry])
+            for from_geometry, to_geometry in zip(
+                result["_from_geometry"],
+                result["_to_geometry"],
+            )
+        ]
+    
+        return gpd.GeoDataFrame(
+            result.drop(
+                columns=["_from_geometry", "_to_geometry"]
             ),
             geometry="geometry",
             crs=nodes_gdf.crs,
         )
-
-        return lines_gdf
-
-    def fetch_catchments_geometry(
-        self,
-        export=True,
-        export_path="",
-        overwrite=True,
-    ):
-        """
-        Fetch catchment geometries from the MIKE+ database.
-
-        Args:
-            export: Whether to export the resulting GeoDataFrame to file.
-            export_path: Output file path. If empty, a default shapefile path is used.
-            overwrite: Whether to overwrite an existing export file.
-
-        Returns:
-            GeoDataFrame containing catchment geometries, or None if the operation fails.
-        """
-        con = None
-
-        try:
-            con = sqlite3.connect(self.db_path)
-            con.enable_load_extension(True)
-            con.execute('SELECT load_extension("mod_spatialite")')
-
-            query = """
-            SELECT MUID, AsText(Geometry) AS wkt_geometry
-            FROM msm_Catchment;
-            """
-
-            df = pd.read_sql_query(query, con)
-            df["geometry"] = df["wkt_geometry"].apply(loads)
-
-            gdf = gpd.GeoDataFrame(
-                df.drop("wkt_geometry", axis=1),
-                geometry="geometry",
-                crs="EPSG:2056",
-            )
-
-            con.close()
-            con = None
-
-            if export:
-                if export_path == "":
-                    export_path = os.path.join(
-                        os.path.dirname(self.db_path),
-                        "exported_shapefiles",
-                        os.path.splitext(os.path.basename(self.db_path))[0] + ".shp",
-                    )
-
-                if os.path.exists(export_path) and not overwrite:
-                    print(f"Could not export, file already exists: {export_path}")
-                else:
-                    os.makedirs(os.path.dirname(export_path), exist_ok=True)
-                    gdf.to_file(export_path)
-                    print(f"Export successful: {export_path}")
-
-            self.catchments = gdf
-            return gdf
-
-        except Exception as exc:
-            print(exc)
-            return None
-
-        finally:
-            if con is not None:
-                con.close()
-
-    def fetch_table_geometry(
-        self,
-        table_name,
-        export=True,
-        export_path="",
-        overwrite=True,
-    ):
-        """
-        Fetch geometry from a spatial table in the MIKE+ database.
-
-        Args:
-            table_name: Name of the spatial table to query.
-            export: Whether to export the resulting GeoDataFrame to file.
-            export_path: Output file path. If empty, a default shapefile path is used.
-            overwrite: Whether to overwrite an existing export file.
-
-        Returns:
-            GeoDataFrame containing the selected table geometry, or None if the operation fails.
-        """
-        con = None
-
-        try:
-            con = sqlite3.connect(self.db_path)
-            con.enable_load_extension(True)
-            con.execute('SELECT load_extension("mod_spatialite")')
-
-            query = f"""
-            SELECT MUID, AsText(Geometry) AS wkt_geometry
-            FROM {table_name};
-            """
-
-            df = pd.read_sql_query(query, con)
-            df["geometry"] = df["wkt_geometry"].apply(loads)
-
-            gdf = gpd.GeoDataFrame(
-                df.drop("wkt_geometry", axis=1),
-                geometry="geometry",
-                crs="EPSG:2056",
-            )
-
-            con.close()
-            con = None
-
-            if export:
-                if export_path == "":
-                    export_path = os.path.join(
-                        os.path.dirname(self.db_path),
-                        "exported_shapefiles",
-                        os.path.splitext(os.path.basename(self.db_path))[0] + ".shp",
-                    )
-
-                if os.path.exists(export_path) and not overwrite:
-                    print(f"Could not export, file already exists: {export_path}")
-                else:
-                    os.makedirs(os.path.dirname(export_path), exist_ok=True)
-                    gdf.to_file(export_path)
-                    print(f"Export successful: {export_path}")
-
-            self.catchments = gdf
-            return gdf
-
-        except Exception as exc:
-            print(exc)
-            return None
-
-        finally:
-            if con is not None:
-                con.close()
 
     def fetch_table_attributes_geometry(
         self,
@@ -406,24 +305,29 @@ class MPlusModel:
                 con.close()
     
     @staticmethod
-    def make_catchment_connection(row, col_geom_catch, col_geom_node):
+    def build_catchment_connection_geometry(
+        row,
+        catchment_geometry_column,
+        node_geometry_column,
+    ):
         """
-        Create a LineString connecting a catchment centroid to a node geometry.
-
-        Args:
-            row: DataFrame row containing catchment and node geometries.
-            col_geom_catch: Column name containing the catchment geometry.
-            col_geom_node: Column name containing the node geometry.
-
-        Returns:
-            LineString connecting the catchment centroid to the node geometry,
-            or None if either geometry is missing.
+        Build a line from a catchment centroid to its connected node.
         """
-        if pd.isna(row[col_geom_catch]) or pd.isna(row[col_geom_node]):
+        catchment_geometry = row[catchment_geometry_column]
+        node_geometry = row[node_geometry_column]
+    
+        if catchment_geometry is None or node_geometry is None:
             return None
-
-        catch_centroid = row[col_geom_catch].centroid
-        return LineString([catch_centroid, row[col_geom_node]])
+    
+        if catchment_geometry.is_empty or node_geometry.is_empty:
+            return None
+    
+        return LineString(
+            [
+                catchment_geometry.centroid,
+                node_geometry,
+            ]
+        )
 
     @staticmethod
     def validate_catchment_connections(
