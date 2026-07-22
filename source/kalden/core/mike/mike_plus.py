@@ -1,13 +1,19 @@
 """
-Utility functions for interacting with MIKE+ model files.
+Utilities for reading and analysing MIKE+ model databases.
 
-This module provides helper methods used across projects.
+The module provides a small wrapper around MIKE+ SQLite/SpatiaLite databases,
+along with helpers for constructing and validating network geometries.
 
 Author: DEAO
 Created: 2026-01-15
 """
 
+from __future__ import annotations
+
 import sqlite3
+from os import PathLike
+from pathlib import Path
+from typing import Any
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -15,20 +21,79 @@ import networkx as nx
 import pandas as pd
 from shapely.geometry import LineString
 from shapely.wkt import loads
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 
 
 class MPlusModel:
-    """Helper class for reading and analyzing MIKE+ model database content."""
+    """Read and analyse content from a MIKE+ SQLite database."""
 
-    def __init__(self, db_path):
+    def __init__(self, db_path: str | PathLike[str]) -> None:
         """
-        Initialize the MIKE+ model helper.
+        Initialise the MIKE+ model helper.
 
         Args:
             db_path: Path to the MIKE+ SQLite database file.
         """
-        self.db_path = db_path
+        self.db_path = Path(db_path).expanduser()
+
+    @staticmethod
+    def _quote_identifier(identifier: str) -> str:
+        """Safely quote an SQLite table or column identifier."""
+        if not isinstance(identifier, str) or not identifier:
+            raise ValueError("SQLite identifiers must be non-empty strings.")
+
+        return '"' + identifier.replace('"', '""') + '"'
+
+    @staticmethod
+    def _resolve_column(
+        dataframe: pd.DataFrame,
+        requested_column: str,
+    ) -> Any:
+        """Resolve a DataFrame column name case-insensitively."""
+        matches = [
+            column
+            for column in dataframe.columns
+            if str(column).casefold() == requested_column.casefold()
+        ]
+
+        if not matches:
+            raise ValueError(
+                f"Column '{requested_column}' was not found. "
+                f"Available columns: {list(dataframe.columns)}"
+            )
+
+        if len(matches) > 1:
+            raise ValueError(
+                f"Multiple columns match '{requested_column}': {matches}"
+            )
+
+        return matches[0]
+
+    @staticmethod
+    def _require_active_geometry(gdf: gpd.GeoDataFrame, name: str) -> None:
+        """Validate that a GeoDataFrame has an active geometry column."""
+        if not isinstance(gdf, gpd.GeoDataFrame):
+            raise TypeError(f"{name} must be a geopandas.GeoDataFrame.")
+
+        try:
+            gdf.geometry
+        except AttributeError as exc:
+            raise ValueError(
+                f"{name} does not have an active geometry column."
+            ) from exc
+
+    @staticmethod
+    def _require_projected_crs(gdf: gpd.GeoDataFrame, purpose: str) -> None:
+        """Require a projected CRS before calculating area or length."""
+        if gdf.crs is None:
+            raise ValueError(
+                f"The GeoDataFrame CRS must be set before calculating {purpose}."
+            )
+
+        if gdf.crs.is_geographic:
+            raise ValueError(
+                f"A projected CRS is required for {purpose}; received {gdf.crs}."
+            )
 
     def list_tables(
         self,
@@ -39,277 +104,296 @@ class MPlusModel:
     ) -> list[str]:
         """
         List tables available in the MIKE+ database.
-    
+
         Args:
             contains:
-                Optional case-insensitive substring used to filter table names.
+                Optional case-insensitive substring used to filter names.
             include_views:
                 Whether to include database views.
             print_results:
                 Whether to print each matching name.
-    
+
         Returns:
             Sorted list of matching table and optionally view names.
         """
         object_types = ("table", "view") if include_views else ("table",)
-    
         placeholders = ", ".join("?" for _ in object_types)
-    
+
         query = f"""
             SELECT name
             FROM sqlite_master
             WHERE type IN ({placeholders})
               AND name NOT LIKE 'sqlite_%'
-            ORDER BY name;
+            ORDER BY name COLLATE NOCASE;
         """
-    
-        with sqlite3.connect(self.db_path) as con:
-            rows = con.execute(query, object_types).fetchall()
-    
-        table_names = [row[0] for row in rows]
-    
+
+        with sqlite3.connect(str(self.db_path)) as connection:
+            rows = connection.execute(query, object_types).fetchall()
+
+        names = [row[0] for row in rows]
+
         if contains:
             search_value = contains.casefold()
-            table_names = [
+            names = [
                 name
-                for name in table_names
+                for name in names
                 if search_value in name.casefold()
             ]
-    
+
         if print_results:
-            for name in table_names:
+            for name in names:
                 print(name)
-    
-            print(f"\n{len(table_names)} table(s) found.")
-    
-        return table_names
+
+            print(f"\n{len(names)} table(s) found.")
+
+        return names
 
     def fetch_table_attributes_geometry(
         self,
-        table_name,
-        geometry_column="Geometry",
-        crs="EPSG:2056",
-    ):
+        table_name: str,
+        geometry_column: str = "Geometry",
+        crs: str = "EPSG:2056",
+    ) -> gpd.GeoDataFrame:
         """
-        Fetch all attributes and geometry from a spatial MIKE+ database table.
-    
+        Fetch every attribute and the geometry from a spatial MIKE+ table.
+
         Args:
             table_name:
-                Name of the spatial table to query.
+                Name of the spatial table or view to query.
             geometry_column:
-                Name of the spatial geometry column.
+                Name of the SpatiaLite geometry column.
             crs:
-                Coordinate reference system assigned to the GeoDataFrame.
-    
+                CRS assigned to the returned GeoDataFrame.
+
         Returns:
-            A GeoDataFrame containing all table attributes and geometry,
-            or None if the operation fails.
+            GeoDataFrame containing every non-geometry attribute and a Shapely
+            geometry column.
+
+        Raises:
+            ValueError:
+                If the table or geometry column does not exist.
+            sqlite3.Error:
+                If the database query fails.
+            RuntimeError:
+                If the SpatiaLite extension cannot be loaded.
         """
-    
-        def quote_identifier(identifier):
-            """Safely quote an SQLite table or column identifier."""
-            return '"' + identifier.replace('"', '""') + '"'
-    
-        con = None
-    
-        try:
-            con = sqlite3.connect(self.db_path)
-            con.enable_load_extension(True)
-            con.execute('SELECT load_extension("mod_spatialite")')
-    
-            table_exists = con.execute(
+        with sqlite3.connect(str(self.db_path)) as connection:
+            connection.enable_load_extension(True)
+
+            try:
+                connection.execute('SELECT load_extension("mod_spatialite")')
+            except sqlite3.Error as exc:
+                raise RuntimeError(
+                    "Could not load the 'mod_spatialite' SQLite extension."
+                ) from exc
+
+            table_row = connection.execute(
                 """
-                SELECT 1
+                SELECT name
                 FROM sqlite_master
                 WHERE type IN ('table', 'view')
-                  AND name = ?
+                  AND name = ? COLLATE NOCASE
                 """,
                 (table_name,),
             ).fetchone()
-    
-            if table_exists is None:
-                raise ValueError(f"Table does not exist: {table_name}")
-    
-            quoted_table = quote_identifier(table_name)
-    
-            table_info = con.execute(
+
+            if table_row is None:
+                raise ValueError(f"Table or view does not exist: {table_name}")
+
+            actual_table_name = table_row[0]
+            quoted_table = self._quote_identifier(actual_table_name)
+
+            table_info = connection.execute(
                 f"PRAGMA table_info({quoted_table})"
             ).fetchall()
-    
+
             column_names = [column[1] for column in table_info]
-    
             geometry_matches = [
                 column
                 for column in column_names
                 if column.casefold() == geometry_column.casefold()
             ]
-    
+
             if not geometry_matches:
                 raise ValueError(
                     f"Geometry column '{geometry_column}' was not found "
-                    f"in table '{table_name}'."
+                    f"in table '{actual_table_name}'. Available columns: "
+                    f"{column_names}"
                 )
-    
+
+            if len(geometry_matches) > 1:
+                raise ValueError(
+                    f"Multiple columns match geometry column "
+                    f"'{geometry_column}': {geometry_matches}"
+                )
+
             actual_geometry_column = geometry_matches[0]
-    
             attribute_columns = [
                 column
                 for column in column_names
-                if column.casefold() != actual_geometry_column.casefold()
+                if column != actual_geometry_column
             ]
-    
+
+            wkt_alias = "_kalden_wkt_geometry"
+            while wkt_alias in column_names:
+                wkt_alias = f"_{wkt_alias}"
+
             select_expressions = [
-                quote_identifier(column)
+                self._quote_identifier(column)
                 for column in attribute_columns
             ]
-    
             select_expressions.append(
-                f"AsText({quote_identifier(actual_geometry_column)}) "
-                "AS wkt_geometry"
+                f"AsText({self._quote_identifier(actual_geometry_column)}) "
+                f"AS {self._quote_identifier(wkt_alias)}"
             )
-    
+
             query = f"""
                 SELECT
                     {", ".join(select_expressions)}
                 FROM {quoted_table};
             """
-    
-            df = pd.read_sql_query(query, con)
-    
-            df["geometry"] = df["wkt_geometry"].apply(
-                lambda value: loads(value)
-                if value is not None and value != ""
-                else None
-            )
-    
-            return gpd.GeoDataFrame(
-                df.drop(columns="wkt_geometry"),
-                geometry="geometry",
-                crs=crs,
-            )
-    
-        except Exception as exc:
-            print(
-                f"Could not fetch attributes and geometry from "
-                f"'{table_name}': {exc}"
-            )
-            return None
-    
-        finally:
-            if con is not None:
-                con.close()
+
+            dataframe = pd.read_sql_query(query, connection)
+
+        dataframe["geometry"] = dataframe[wkt_alias].map(
+            lambda value: loads(value)
+            if isinstance(value, str) and value.strip()
+            else None
+        )
+
+        return gpd.GeoDataFrame(
+            dataframe.drop(columns=wkt_alias),
+            geometry="geometry",
+            crs=crs,
+        )
 
     @staticmethod
-    def _resolve_column(dataframe, requested_column):
-        """
-        Return the actual DataFrame column matching a name case-insensitively.
-        """
-        matches = [
-            column
-            for column in dataframe.columns
-            if column.casefold() == requested_column.casefold()
-        ]
-    
-        if not matches:
-            raise ValueError(
-                f"Column '{requested_column}' was not found. "
-                f"Available columns: {list(dataframe.columns)}"
-            )
-    
-        if len(matches) > 1:
-            raise ValueError(
-                f"Multiple columns match '{requested_column}': {matches}"
-            )
-    
-        return matches[0]
-    
-    @staticmethod
     def build_link_geometries_from_nodes(
-        nodes_gdf,
-        links_df,
+        nodes_gdf: gpd.GeoDataFrame,
+        links_df: pd.DataFrame,
         *,
-        node_id_column="MUID",
-        from_node_column="FromNodeID",
-        to_node_column="ToNodeID",
-    ):
+        node_id_column: str = "MUID",
+        from_node_column: str = "FromNodeID",
+        to_node_column: str = "ToNodeID",
+    ) -> gpd.GeoDataFrame:
         """
-        Build straight link geometries from their endpoint node geometries.
-    
-        This is intended for link tables that do not contain usable stored
-        geometry. Existing link geometry from the database should generally
-        be preferred because it may contain intermediate vertices.
+        Build straight link geometries from endpoint node geometries.
+
+        Stored link geometry should generally be preferred because it may
+        contain intermediate vertices. This helper is intended for tables
+        without usable geometry or for deliberately simplified links.
+
+        Args:
+            nodes_gdf:
+                GeoDataFrame containing node identifiers and point geometry.
+            links_df:
+                DataFrame containing upstream and downstream node identifiers.
+            node_id_column:
+                Node identifier column in ``nodes_gdf``.
+            from_node_column:
+                Upstream node identifier column in ``links_df``.
+            to_node_column:
+                Downstream node identifier column in ``links_df``.
+
+        Returns:
+            GeoDataFrame containing the link attributes and generated straight
+            LineString geometries.
         """
-        required_node_columns = {
+        MPlusModel._require_active_geometry(nodes_gdf, "nodes_gdf")
+
+        node_id_column = MPlusModel._resolve_column(
+            nodes_gdf,
             node_id_column,
-            nodes_gdf.geometry.name,
-        }
-        required_link_columns = {
+        )
+        from_node_column = MPlusModel._resolve_column(
+            links_df,
             from_node_column,
+        )
+        to_node_column = MPlusModel._resolve_column(
+            links_df,
             to_node_column,
-        }
-    
-        missing_node_columns = required_node_columns - set(nodes_gdf.columns)
-        missing_link_columns = required_link_columns - set(links_df.columns)
-    
-        if missing_node_columns:
+        )
+
+        geometry_column = nodes_gdf.geometry.name
+        duplicate_node_ids = (
+            nodes_gdf.loc[
+                nodes_gdf[node_id_column].duplicated(keep=False),
+                node_id_column,
+            ]
+            .dropna()
+            .unique()
+            .tolist()
+        )
+
+        if duplicate_node_ids:
             raise ValueError(
-                "Missing node columns: "
-                + ", ".join(sorted(missing_node_columns))
+                "Node identifiers must be unique. Duplicate IDs: "
+                + ", ".join(map(str, duplicate_node_ids))
             )
-    
-        if missing_link_columns:
+
+        valid_node_geometries = nodes_gdf.geometry.dropna()
+        invalid_geometry_types = sorted(
+            set(valid_node_geometries.geom_type) - {"Point"}
+        )
+
+        if invalid_geometry_types:
             raise ValueError(
-                "Missing link columns: "
-                + ", ".join(sorted(missing_link_columns))
+                "Node geometry must contain Points only. Found: "
+                + ", ".join(invalid_geometry_types)
             )
-    
-        node_geometries = nodes_gdf[
-            [node_id_column, nodes_gdf.geometry.name]
-        ].rename(
+
+        from_nodes = nodes_gdf[[node_id_column, geometry_column]].rename(
             columns={
                 node_id_column: from_node_column,
-                nodes_gdf.geometry.name: "_from_geometry",
+                geometry_column: "_from_geometry",
             }
         )
-    
-        result = links_df.merge(
-            node_geometries,
+        to_nodes = nodes_gdf[[node_id_column, geometry_column]].rename(
+            columns={
+                node_id_column: to_node_column,
+                geometry_column: "_to_geometry",
+            }
+        )
+
+        result = links_df.copy()
+
+        # A pre-existing link geometry is intentionally replaced.
+        if isinstance(result, gpd.GeoDataFrame):
+            result = pd.DataFrame(result)
+
+        if "geometry" in result.columns:
+            result = result.drop(columns="geometry")
+
+        result = result.merge(
+            from_nodes,
             on=from_node_column,
             how="left",
             validate="many_to_one",
         )
-    
-        node_geometries = nodes_gdf[
-            [node_id_column, nodes_gdf.geometry.name]
-        ].rename(
-            columns={
-                node_id_column: to_node_column,
-                nodes_gdf.geometry.name: "_to_geometry",
-            }
-        )
-    
         result = result.merge(
-            node_geometries,
+            to_nodes,
             on=to_node_column,
             how="left",
             validate="many_to_one",
         )
-    
+
         missing_endpoints = (
             result["_from_geometry"].isna()
             | result["_to_geometry"].isna()
         )
-    
+
         if missing_endpoints.any():
-            invalid_links = result.loc[
+            missing_links = result.loc[
                 missing_endpoints,
                 [from_node_column, to_node_column],
             ]
-    
+
+            examples = missing_links.head(10).to_dict(orient="records")
             raise ValueError(
-                f"{len(invalid_links)} link(s) reference missing node geometry."
+                f"{int(missing_endpoints.sum())} link(s) reference missing "
+                f"node geometry. First examples: {examples}"
             )
-    
+
         result["geometry"] = [
             LineString([from_geometry, to_geometry])
             for from_geometry, to_geometry in zip(
@@ -317,364 +401,552 @@ class MPlusModel:
                 result["_to_geometry"],
             )
         ]
-    
+
         return gpd.GeoDataFrame(
-            result.drop(
-                columns=["_from_geometry", "_to_geometry"]
-            ),
+            result.drop(columns=["_from_geometry", "_to_geometry"]),
             geometry="geometry",
             crs=nodes_gdf.crs,
         )
-    
+
     @staticmethod
     def build_catchment_connection_geometry(
-        row,
-        catchment_geometry_column,
-        node_geometry_column,
-    ):
-        """
-        Build a line from a catchment centroid to its connected node.
-        """
+        row: pd.Series,
+        catchment_geometry_column: str,
+        node_geometry_column: str,
+    ) -> LineString | None:
+        """Build a line from a catchment centroid to its connected node."""
         catchment_geometry = row[catchment_geometry_column]
         node_geometry = row[node_geometry_column]
-    
-        if catchment_geometry is None or node_geometry is None:
+
+        if pd.isna(catchment_geometry) or pd.isna(node_geometry):
             return None
-    
+
         if catchment_geometry.is_empty or node_geometry.is_empty:
             return None
-    
-        return LineString(
-            [
-                catchment_geometry.centroid,
-                node_geometry,
-            ]
-        )
+
+        if node_geometry.geom_type != "Point":
+            raise ValueError(
+                "The node geometry must be a Point; received "
+                f"{node_geometry.geom_type}."
+            )
+
+        return LineString([catchment_geometry.centroid, node_geometry])
 
     @staticmethod
     def validate_catchment_connections(
-        catchments_gdf,
-        catchment_connections_gdf,
+        catchments_gdf: pd.DataFrame,
+        catchment_connections_gdf: pd.DataFrame,
         *,
-        catchment_id_column="muid",
-        connection_id_column="catchid",
-    ):
+        catchment_id_column: str = "muid",
+        connection_id_column: str = "catchid",
+    ) -> bool:
         """
         Validate that every catchment has exactly one connection.
-    
-        Checks that:
-    
-        1. No catchment has more than one connection.
-        2. Every catchment has a connection.
-        3. No connection references an unknown catchment.
-        4. Catchment and connection identifiers are not null.
-    
-        Args:
-            catchments_gdf:
-                DataFrame or GeoDataFrame containing the catchments.
-            catchment_connections_gdf:
-                DataFrame or GeoDataFrame containing catchment connections.
-            catchment_id_column:
-                Catchment identifier column in ``catchments_gdf``.
-            connection_id_column:
-                Catchment identifier column in
-                ``catchment_connections_gdf``.
-    
-        Returns:
-            True when the connections are valid.
-    
-        Raises:
-            ValueError:
-                If the required columns are missing or validation fails.
-        """
 
-        if catchment_id_column not in catchments_gdf.columns:
-            raise ValueError(
-                f"Column '{catchment_id_column}' was not found in "
-                "catchments_gdf."
-            )
-    
-        if connection_id_column not in catchment_connections_gdf.columns:
-            raise ValueError(
-                f"Column '{connection_id_column}' was not found in "
-                "catchment_connections_gdf."
-            )
-    
+        The validation checks for null identifiers, duplicate catchment IDs,
+        multiple connections per catchment, missing connections, and references
+        to unknown catchments.
+
+        Returns:
+            ``True`` when all checks pass.
+
+        Raises:
+            ValueError: If one or more checks fail.
+        """
+        catchment_id_column = MPlusModel._resolve_column(
+            catchments_gdf,
+            catchment_id_column,
+        )
+        connection_id_column = MPlusModel._resolve_column(
+            catchment_connections_gdf,
+            connection_id_column,
+        )
+
         catchment_ids = catchments_gdf[catchment_id_column]
         connection_ids = catchment_connections_gdf[connection_id_column]
-    
-        errors = []
-    
+        errors: list[str] = []
+
         null_catchment_count = int(catchment_ids.isna().sum())
         null_connection_count = int(connection_ids.isna().sum())
-    
+
         if null_catchment_count:
             errors.append(
                 f"{null_catchment_count} catchment(s) have a null "
                 f"'{catchment_id_column}'."
             )
-    
+
         if null_connection_count:
             errors.append(
                 f"{null_connection_count} connection(s) have a null "
                 f"'{connection_id_column}'."
             )
-    
+
         valid_catchment_ids = catchment_ids.dropna()
         valid_connection_ids = connection_ids.dropna()
-    
+
+        duplicate_catchment_ids = (
+            valid_catchment_ids[
+                valid_catchment_ids.duplicated(keep=False)
+            ]
+            .unique()
+            .tolist()
+        )
+
+        if duplicate_catchment_ids:
+            errors.append(
+                "Duplicate catchment identifiers: "
+                + ", ".join(map(str, duplicate_catchment_ids))
+                + "."
+            )
+
         connection_counts = valid_connection_ids.value_counts()
-    
         multiple_connections = connection_counts[
             connection_counts > 1
         ].to_dict()
-    
+
         if multiple_connections:
             details = ", ".join(
                 f"{catchment_id} ({count})"
                 for catchment_id, count in multiple_connections.items()
             )
-    
             errors.append(
-                "Catchments with multiple connections: "
-                f"{details}."
+                f"Catchments with multiple connections: {details}."
             )
-    
+
         catchment_id_set = set(valid_catchment_ids)
         connection_id_set = set(valid_connection_ids)
-    
+
         missing_connections = sorted(
             catchment_id_set - connection_id_set,
             key=str,
         )
-    
         if missing_connections:
             errors.append(
                 "Catchments without a connection: "
                 + ", ".join(map(str, missing_connections))
                 + "."
             )
-    
+
         unknown_catchments = sorted(
             connection_id_set - catchment_id_set,
             key=str,
         )
-    
         if unknown_catchments:
             errors.append(
                 "Connections referencing unknown catchments: "
                 + ", ".join(map(str, unknown_catchments))
                 + "."
             )
-    
+
         if errors:
             raise ValueError(
                 "Invalid catchment connections:\n- "
                 + "\n- ".join(errors)
             )
-    
+
         return True
-    
+
     @staticmethod
     def upstream_analysis(
-        catchments_connections_gdf,
-        links_gdf,
-        target_node_id,
-        plot=False,
-    ):
+        catchment_connections_gdf: gpd.GeoDataFrame,
+        links_gdf: gpd.GeoDataFrame,
+        target_node_id: Any,
+        plot: bool = False,
+        *,
+        connection_node_column: str = "NodeID",
+        catchment_id_column: str = "muid",
+        catchment_geometry_column: str = "geometry_catchment",
+        node_geometry_column: str = "geometry_node",
+        from_node_column: str = "FromNodeID",
+        to_node_column: str = "ToNodeID",
+        verbose: bool = True,
+    ) -> dict[str, Any]:
         """
-        Compute upstream nodes and total catchment area draining into a target node.
-
-        Assumes:
-            - links_gdf has FromNodeID and ToNodeID columns.
-            - catchments_connections_gdf has a NodeID column.
-            - catchments_connections_gdf has geometry_catchment and geometry_node columns.
+        Calculate the network and catchments upstream of one target node.
 
         Args:
-            catchments_connections_gdf: GeoDataFrame linking catchments to nodes.
-            links_gdf: GeoDataFrame containing network links.
-            target_node_id: Target node identifier.
-            plot: Whether to plot upstream catchments and links.
+            catchment_connections_gdf:
+                GeoDataFrame containing catchment-to-node connections.
+            links_gdf:
+                GeoDataFrame containing directed network links.
+            target_node_id:
+                Target node identifier.
+            plot:
+                Whether to create a Matplotlib overview plot.
+            connection_node_column:
+                Connected node ID column in ``catchment_connections_gdf``.
+            catchment_id_column:
+                Catchment identifier used for plot colouring.
+            catchment_geometry_column:
+                Catchment polygon geometry column.
+            node_geometry_column:
+                Connected node point geometry column.
+            from_node_column:
+                Upstream endpoint column in ``links_gdf``.
+            to_node_column:
+                Downstream endpoint column in ``links_gdf``.
+            verbose:
+                Whether to print summary information.
 
         Returns:
-            Dictionary containing upstream nodes, upstream catchments, and total area in hectares.
+            Dictionary containing upstream nodes, upstream links, upstream
+            catchments, and total catchment area in hectares.
         """
+        MPlusModel._require_active_geometry(
+            catchment_connections_gdf,
+            "catchment_connections_gdf",
+        )
+        MPlusModel._require_active_geometry(links_gdf, "links_gdf")
+
+        connection_node_column = MPlusModel._resolve_column(
+            catchment_connections_gdf,
+            connection_node_column,
+        )
+        catchment_geometry_column = MPlusModel._resolve_column(
+            catchment_connections_gdf,
+            catchment_geometry_column,
+        )
+        if plot:
+            catchment_id_column = MPlusModel._resolve_column(
+                catchment_connections_gdf,
+                catchment_id_column,
+            )
+
+        node_geometry_column = MPlusModel._resolve_column(
+            catchment_connections_gdf,
+            node_geometry_column,
+        )
+        from_node_column = MPlusModel._resolve_column(
+            links_gdf,
+            from_node_column,
+        )
+        to_node_column = MPlusModel._resolve_column(
+            links_gdf,
+            to_node_column,
+        )
+
         graph = nx.DiGraph()
-
-        for _, link in links_gdf.iterrows():
-            graph.add_edge(link["FromNodeID"], link["ToNodeID"])
-
-        graph.add_node(target_node_id)
+        graph.add_edges_from(
+            links_gdf[[from_node_column, to_node_column]]
+            .dropna()
+            .itertuples(index=False, name=None)
+        )
+        graph.add_nodes_from(
+            catchment_connections_gdf[connection_node_column].dropna()
+        )
 
         if target_node_id not in graph:
-            return {"error": f"Node {target_node_id} not in graph"}
+            raise ValueError(
+                f"Target node '{target_node_id}' is not present in the "
+                "network or catchment connections."
+            )
 
-        upstream_nodes = list(nx.ancestors(graph, target_node_id))
-        all_contributing_nodes = upstream_nodes + [target_node_id]
-
-        print(
-            f"Graph: {graph.number_of_nodes()} nodes, "
-            f"{graph.number_of_edges()} edges"
+        upstream_nodes = sorted(
+            nx.ancestors(graph, target_node_id),
+            key=str,
         )
-        print(
-            f"Upstream nodes: {len(upstream_nodes)}, "
-            f"Total contributing nodes: {len(all_contributing_nodes)}"
-        )
+        contributing_nodes = set(upstream_nodes)
+        contributing_nodes.add(target_node_id)
 
-        upstream_catch_gdf = catchments_connections_gdf[
-            catchments_connections_gdf["NodeID"].isin(all_contributing_nodes)
+        upstream_catchments = catchment_connections_gdf.loc[
+            catchment_connections_gdf[connection_node_column].isin(
+                contributing_nodes
+            )
         ].copy()
+        upstream_catchments = upstream_catchments.set_geometry(
+            catchment_geometry_column
+        )
 
-        upstream_catch_gdf = upstream_catch_gdf.set_geometry("geometry_catchment")
-        total_area_ha = upstream_catch_gdf.geometry.area.sum() / 10_000
+        MPlusModel._require_projected_crs(
+            upstream_catchments,
+            "catchment area",
+        )
 
-        print(f"total_area_ha : {total_area_ha}")
+        valid_catchment_geometry = (
+            upstream_catchments.geometry.notna()
+            & ~upstream_catchments.geometry.is_empty
+        )
+        total_area_ha = (
+            upstream_catchments.loc[
+                valid_catchment_geometry,
+                upstream_catchments.geometry.name,
+            ].area.sum()
+            / 10_000
+        )
+
+        upstream_link_mask = (
+            links_gdf[from_node_column].isin(contributing_nodes)
+            & links_gdf[to_node_column].isin(contributing_nodes)
+        )
+        upstream_links = links_gdf.loc[upstream_link_mask].copy()
+
+        if verbose:
+            print(
+                f"Graph: {graph.number_of_nodes()} nodes, "
+                f"{graph.number_of_edges()} edges"
+            )
+            print(
+                f"Upstream nodes: {len(upstream_nodes)}, "
+                f"contributing nodes: {len(contributing_nodes)}"
+            )
+            print(f"Total catchment area: {total_area_ha:.3f} ha")
 
         if plot:
-            upstream_links_gdf = links_gdf[
-                links_gdf["ToNodeID"].isin(all_contributing_nodes)
-            ]
+            figure, axis = plt.subplots(figsize=(12, 8))
 
-            fig, ax = plt.subplots(figsize=(12, 8))
+            if not upstream_catchments.empty:
+                upstream_catchments.plot(
+                    column=catchment_id_column,
+                    legend=True,
+                    cmap="tab20",
+                    ax=axis,
+                    alpha=0.7,
+                    edgecolor="black",
+                    linewidth=0.8,
+                )
 
-            upstream_catch_gdf.plot(
-                column="muid",
-                legend=True,
-                cmap="tab20",
-                ax=ax,
-                alpha=0.7,
-                edgecolor="black",
-                linewidth=0.8,
+            if not upstream_links.empty:
+                upstream_links.plot(
+                    ax=axis,
+                    color="blue",
+                    linewidth=2,
+                    alpha=0.6,
+                    label="Links",
+                )
+
+            node_view = upstream_catchments.set_geometry(
+                node_geometry_column
             )
-
-            upstream_links_gdf.plot(
-                ax=ax,
-                color="blue",
-                linewidth=2,
-                alpha=0.6,
-                label="Links",
+            valid_node_geometry = (
+                node_view.geometry.notna()
+                & ~node_view.geometry.is_empty
             )
+            node_view = node_view.loc[valid_node_geometry]
 
-            upstream_catch_gdf = upstream_catch_gdf.set_geometry("geometry_node")
-            upstream_catch_gdf.plot(
-                ax=ax,
-                color="yellow",
-                markersize=50,
-                label="Nodes",
-            )
+            if not node_view.empty:
+                node_view.plot(
+                    ax=axis,
+                    color="yellow",
+                    edgecolor="black",
+                    markersize=50,
+                    label="Connected nodes",
+                )
 
-            target_node_gdf = upstream_catch_gdf[
-                upstream_catch_gdf["NodeID"] == target_node_id
-            ]
-            target_node_gdf.plot(
-                ax=ax,
-                color="red",
-                markersize=200,
-                marker="*",
-                label=f"Target: {target_node_id}",
-            )
+                target_node_view = node_view.loc[
+                    node_view[connection_node_column] == target_node_id
+                ]
+                if not target_node_view.empty:
+                    target_node_view.plot(
+                        ax=axis,
+                        color="red",
+                        markersize=200,
+                        marker="*",
+                        label=f"Target: {target_node_id}",
+                    )
 
-            ax.set_title(
-                f"Upstream Catchments + Network for Target Node {target_node_id}\n"
-                f"Total Area: {total_area_ha:.2f} ha, "
-                f"Catchments: {len(upstream_catch_gdf)}",
+            axis.set_title(
+                "Upstream catchments and network for "
+                f"{target_node_id}\n"
+                f"Area: {total_area_ha:.2f} ha; "
+                f"catchments: {len(upstream_catchments)}",
                 fontsize=14,
                 fontweight="bold",
             )
-            ax.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
-            fig.tight_layout()
+            axis.set_axis_off()
+            axis.legend(bbox_to_anchor=(1.05, 1), loc="upper left")
+            figure.tight_layout()
             plt.show()
 
         return {
             "upstream_nodes": upstream_nodes,
-            "upstream_catchments_gdf": upstream_catch_gdf,
-            "total_area_ha": total_area_ha,
+            "upstream_links_gdf": upstream_links,
+            "upstream_catchments_gdf": upstream_catchments,
+            "total_area_ha": float(total_area_ha),
         }
 
     @staticmethod
     def batch_upstream_analysis(
-        catchments_connections_gdf,
-        links_gdf,
-        nodes_gdf,
-        export_path="",
-    ):
+        catchment_connections_gdf: gpd.GeoDataFrame,
+        links_gdf: gpd.GeoDataFrame,
+        nodes_gdf: gpd.GeoDataFrame,
+        export_path: str | PathLike[str] | None = None,
+        *,
+        connection_node_column: str = "NodeID",
+        catchment_geometry_column: str = "geometry_catchment",
+        node_id_column: str = "MUID",
+        from_node_column: str = "FromNodeID",
+        to_node_column: str = "ToNodeID",
+        show_progress: bool = True,
+        verbose: bool = True,
+    ) -> pd.DataFrame:
         """
-        Run upstream catchment analysis for all nodes.
+        Run upstream network analysis for every node.
 
-        The network graph is built once and reused for each node.
+        Catchment area is calculated from the direct area connected to each
+        contributing node. Link length is calculated only from links whose two
+        endpoints both belong to the target node's upstream subnetwork.
 
         Args:
-            catchments_connections_gdf: GeoDataFrame linking catchments to nodes.
-            links_gdf: GeoDataFrame containing FromNodeID, ToNodeID, and geometry columns.
-            nodes_gdf: GeoDataFrame containing node MUID identifiers.
-            export_path: Optional Excel output path for the summary table.
+            catchment_connections_gdf:
+                GeoDataFrame containing catchment-to-node connections.
+            links_gdf:
+                GeoDataFrame containing directed links.
+            nodes_gdf:
+                GeoDataFrame containing all target node identifiers.
+            export_path:
+                Optional Excel output path.
+            connection_node_column:
+                Connected node ID column in ``catchment_connections_gdf``.
+            catchment_geometry_column:
+                Catchment polygon geometry column.
+            node_id_column:
+                Node identifier column in ``nodes_gdf``.
+            from_node_column:
+                Upstream endpoint column in ``links_gdf``.
+            to_node_column:
+                Downstream endpoint column in ``links_gdf``.
+            show_progress:
+                Whether to display a tqdm progress bar.
+            verbose:
+                Whether to print a summary.
 
         Returns:
-            DataFrame containing upstream node count, pipe length, and catchment area per node.
+            DataFrame containing upstream node count, link length, catchment
+            count, and catchment area for each node.
         """
+        MPlusModel._require_active_geometry(
+            catchment_connections_gdf,
+            "catchment_connections_gdf",
+        )
+        MPlusModel._require_active_geometry(links_gdf, "links_gdf")
+        MPlusModel._require_active_geometry(nodes_gdf, "nodes_gdf")
+
+        connection_node_column = MPlusModel._resolve_column(
+            catchment_connections_gdf,
+            connection_node_column,
+        )
+        catchment_geometry_column = MPlusModel._resolve_column(
+            catchment_connections_gdf,
+            catchment_geometry_column,
+        )
+        node_id_column = MPlusModel._resolve_column(
+            nodes_gdf,
+            node_id_column,
+        )
+        from_node_column = MPlusModel._resolve_column(
+            links_gdf,
+            from_node_column,
+        )
+        to_node_column = MPlusModel._resolve_column(
+            links_gdf,
+            to_node_column,
+        )
+
+        catchment_view = catchment_connections_gdf.set_geometry(
+            catchment_geometry_column
+        ).copy()
+        MPlusModel._require_projected_crs(
+            catchment_view,
+            "catchment area",
+        )
+        MPlusModel._require_projected_crs(links_gdf, "link length")
+
         graph = nx.DiGraph()
+        graph.add_edges_from(
+            links_gdf[[from_node_column, to_node_column]]
+            .dropna()
+            .itertuples(index=False, name=None)
+        )
+        graph.add_nodes_from(nodes_gdf[node_id_column].dropna())
+        graph.add_nodes_from(
+            catchment_view[connection_node_column].dropna()
+        )
 
-        for _, link in links_gdf.iterrows():
-            graph.add_edge(link["FromNodeID"], link["ToNodeID"])
+        valid_catchment_geometry = (
+            catchment_view.geometry.notna()
+            & ~catchment_view.geometry.is_empty
+        )
+        catchment_view = catchment_view.loc[
+            valid_catchment_geometry
+        ].copy()
+        catchment_view["_kalden_area_ha"] = (
+            catchment_view.geometry.area / 10_000
+        )
 
-        graph.add_nodes_from(nodes_gdf["MUID"])
+        direct_area_by_node = catchment_view.groupby(
+            connection_node_column,
+            dropna=False,
+        )["_kalden_area_ha"].sum()
+        direct_count_by_node = catchment_view.groupby(
+            connection_node_column,
+            dropna=False,
+        ).size()
 
-        node_areas = {}
+        node_ids = nodes_gdf[node_id_column].dropna().drop_duplicates().tolist()
+        iterator = tqdm(
+            node_ids,
+            desc="Upstream analysis",
+            disable=not show_progress,
+        )
 
-        for node_id in catchments_connections_gdf["NodeID"].unique():
-            upstream_nodes = list(nx.ancestors(graph, node_id)) + [node_id]
-            catch_gdf = catchments_connections_gdf[
-                catchments_connections_gdf["NodeID"].isin(upstream_nodes)
-            ].set_geometry("geometry_catchment")
+        results: list[dict[str, Any]] = []
 
-            node_areas[node_id] = catch_gdf.geometry.area.sum() / 10_000
+        for node_id in iterator:
+            upstream_nodes = set(nx.ancestors(graph, node_id))
+            contributing_nodes = upstream_nodes | {node_id}
 
-        def upstream_pipe_length(node_id):
-            """
-            Compute total upstream pipe length for a node.
+            total_area_ha = sum(
+                float(direct_area_by_node.get(upstream_node, 0.0))
+                for upstream_node in contributing_nodes
+            )
+            catchment_count = sum(
+                int(direct_count_by_node.get(upstream_node, 0))
+                for upstream_node in contributing_nodes
+            )
 
-            Args:
-                node_id: Node identifier.
-
-            Returns:
-                Total upstream pipe length in meters.
-            """
-            upstream_nodes = list(nx.ancestors(graph, node_id)) + [node_id]
-            upstream_links = links_gdf[
-                links_gdf["FromNodeID"].isin(upstream_nodes)
-                | links_gdf["ToNodeID"].isin(upstream_nodes)
-            ]
-
-            return upstream_links.geometry.length.sum()
-
-        results = []
-
-        for node_id in tqdm(nodes_gdf["MUID"]):
-            upstream_nodes_count = len(list(nx.ancestors(graph, node_id)))
-            total_area_ha = node_areas.get(node_id, 0)
-            pipe_length_m = upstream_pipe_length(node_id)
+            upstream_link_mask = (
+                links_gdf[from_node_column].isin(contributing_nodes)
+                & links_gdf[to_node_column].isin(contributing_nodes)
+            )
+            pipe_length_m = links_gdf.loc[
+                upstream_link_mask
+            ].geometry.length.sum()
 
             results.append(
                 {
                     "NodeID": node_id,
-                    "n_upstream_nodes": upstream_nodes_count,
-                    "upstream_pipe_length_m": pipe_length_m,
-                    "upstream_catchment_area_ha": total_area_ha,
+                    "n_upstream_nodes": len(upstream_nodes),
+                    "n_upstream_catchments": catchment_count,
+                    "upstream_pipe_length_m": float(pipe_length_m),
+                    "upstream_catchment_area_ha": float(total_area_ha),
                 }
             )
 
         results_df = pd.DataFrame(results)
-        results_df["n_upstream_nodes"] = results_df["n_upstream_nodes"].astype(int)
 
-        print(f"\n🏭 BATCH ANALYSIS COMPLETE ({len(results_df)} nodes)")
-        print(results_df.describe())
+        if not results_df.empty:
+            results_df["n_upstream_nodes"] = results_df[
+                "n_upstream_nodes"
+            ].astype(int)
+            results_df["n_upstream_catchments"] = results_df[
+                "n_upstream_catchments"
+            ].astype(int)
 
-        if export_path != "":
+        if verbose:
+            print(f"\nBatch analysis complete ({len(results_df)} nodes)")
+            if not results_df.empty:
+                print(results_df.describe())
+
+        if export_path:
+            output_path = Path(export_path).expanduser()
+            output_path.parent.mkdir(parents=True, exist_ok=True)
             results_df.to_excel(
-                export_path,
+                output_path,
                 sheet_name="network analysis",
                 index=False,
             )
-            print(f"Summary successfully exported to {export_path}")
+
+            if verbose:
+                print(f"Summary successfully exported to {output_path}")
 
         return results_df
