@@ -1,5 +1,69 @@
+from typing import Any
+
 import numpy as np
 import plotly.colors as pc
+import plotly.graph_objects as g
+
+
+def plotly_fig_add_filled_rectangle(
+    fig: go.Figure,
+    x_start: Any,
+    x_end: Any,
+    y_top: float,
+    y_bottom: float,
+    *,
+    fillcolor: str = "rgba(44, 160, 44, 0.3)",
+    name: str = "",
+    showlegend: bool = False,
+    legendgroup: str | None = None,
+) -> go.Figure:
+    """
+    Add a filled rectangular scatter trace to a Plotly figure.
+
+    The rectangle spans from ``x_start`` to ``x_end`` horizontally and from
+    ``y_bottom`` to ``y_top`` vertically. It is implemented as a closed
+    Plotly scatter polygon.
+
+    Parameters
+    ----------
+    fig
+        Plotly figure to modify.
+    x_start, x_end
+        Horizontal bounds of the rectangle. Values may be numeric,
+        categorical, or datetime-like.
+    y_top, y_bottom
+        Vertical bounds of the rectangle.
+    fillcolor
+        Plotly-compatible fill color, such as an RGB, RGBA, or hexadecimal
+        color string.
+    name
+        Trace name displayed in the legend.
+    showlegend
+        Whether to display this trace in the legend.
+    legendgroup
+        Optional legend group shared with other traces.
+
+    Returns
+    -------
+    plotly.graph_objects.Figure
+        The modified input figure.
+    """
+    fig.add_trace(
+        go.Scatter(
+            x=[x_start, x_end, x_end, x_start, x_start],
+            y=[y_top, y_top, y_bottom, y_bottom, y_top],
+            mode="lines",
+            fill="toself",
+            fillcolor=fillcolor,
+            line={"width": 0},
+            name=name,
+            showlegend=showlegend,
+            legendgroup=legendgroup,
+            hoverinfo="skip",
+        )
+    )
+
+    return fig
 
 def save_plotly_fig(fig, filepath, width=1200, height=600, **kwargs):
     """
