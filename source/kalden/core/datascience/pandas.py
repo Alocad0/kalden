@@ -29,6 +29,7 @@ __all__ = [
     "df_nan_summary",
     "df_check_duplicates",
     "df_time_index_summary",
+    "df_crop_to_common_index",
     "df_resample",
     "df_smart_resample",
     "df_detect_frequency",
@@ -364,6 +365,16 @@ class DataFrameUtils:
 
         return summary.T
 
+    @staticmethod
+    def crop_to_common_index(
+        df1: pd.DataFrame,
+        df2: pd.DataFrame,
+    ) -> tuple[pd.DataFrame, pd.DataFrame]:
+        """Crop two DataFrames to their common, sorted index."""
+        common_index = df1.index.intersection(df2.index).sort_values()
+    
+        return df1.loc[common_index], df2.loc[common_index]
+    
     @staticmethod
     def convert_numeric_like_columns(
         df: pd.DataFrame,
@@ -961,6 +972,12 @@ def df_check_duplicates(df, name=None, show=True):
 def df_time_index_summary(df, plot=False):
     """Compatibility wrapper for ``DataFrameUtils.time_index_summary()``."""
     return DataFrameUtils.time_index_summary(df, plot=plot)
+
+
+def df_crop_to_common_index(df1, df2):
+    """Compatibility wrapper for ``DataFrameUtils.crop_to_common_index()``."""
+    return DataFrameUtils.crop_to_common_index(df1, df2)
+
 
 def df_convert_numeric_like_columns(
     df,
