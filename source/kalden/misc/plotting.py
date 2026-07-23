@@ -2,7 +2,7 @@ from typing import Any
 
 import numpy as np
 import plotly.colors as pc
-import plotly.graph_objects as g
+import plotly.graph_objects as go
 
 
 def plotly_fig_add_filled_rectangle(
@@ -65,7 +65,49 @@ def plotly_fig_add_filled_rectangle(
 
     return fig
 
-def save_plotly_fig(fig, filepath, width=1200, height=600, **kwargs):
+from collections.abc import Sequence
+
+
+def plotly_palette_repeat(
+    palette: Sequence[str],
+    n: int,
+) -> list[str]:
+    """
+    Return a requested number of colors by cycling through a Plotly palette.
+
+    Parameters
+    ----------
+    palette
+        Non-empty sequence of Plotly-compatible color strings.
+    n
+        Number of colors to return. Must be non-negative.
+
+    Returns
+    -------
+    list[str]
+        A list containing exactly ``n`` colors.
+
+    Raises
+    ------
+    ValueError
+        If ``palette`` is empty or ``n`` is negative.
+
+    Examples
+    --------
+    >>> import plotly.express as px
+    >>> plotly_palette_repeat(px.colors.qualitative.Plotly, 12)
+    ['#636EFA', '#EF553B', '#00CC96', ...]
+    """
+    if not palette:
+        raise ValueError("palette must contain at least one color.")
+
+    if n < 0:
+        raise ValueError(f"n must be non-negative, got {n}.")
+
+    return [palette[index % len(palette)] for index in range(n)]
+
+
+def plotly_save_fig(fig, filepath, width=1200, height=600, **kwargs):
     """
     Save a Plotly figure to a PNG file.
     
