@@ -17,43 +17,30 @@ from typing import Any
 __all__ = ["_is_numeric", "parse_finite_float"]
 
 
-def _is_numeric(value: Any) -> bool:
-    """Return whether *value* represents an integer or floating-point number.
+from numbers import Real
 
-    Numeric Python scalars are accepted directly. Strings and bytes may contain
-    decimal numbers, scientific notation, Python-style integer prefixes such as
-    ``0x``/``0o``/``0b``, or the special floating-point values ``nan`` and
-    ``inf``.
-
-    Notes
-    -----
-    This preserves the behaviour of the helper supplied in ``schem.py``. In
-    particular, booleans are considered numeric because ``bool`` subclasses
-    ``int``. Use :func:`parse_finite_float` for model parameters where booleans,
-    NaN, and infinity should be rejected.
-    """
-    if isinstance(value, (int, float)):
+def _is_numeric(value):
+    if isinstance(value, Real):
         return True
 
     if isinstance(value, (str, bytes)):
-        stripped = value.strip()
-        if not stripped:
+        value = value.strip()
+        if not value:
             return False
 
         try:
-            int(stripped, 0)
+            int(value, 0)
             return True
         except (TypeError, ValueError):
             pass
 
         try:
-            float(stripped)
+            float(value)
             return True
         except (TypeError, ValueError):
             return False
 
     return False
-
 
 def parse_finite_float(value: Any) -> float | None:
     """Parse *value* as a finite float, returning ``None`` when invalid.
