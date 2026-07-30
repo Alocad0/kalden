@@ -43,6 +43,19 @@ def _is_numeric(value):
 
     return False
 
+def _is_boolean(value: Any) -> bool:
+    """Return True when value is a supported boolean representation."""
+    if isinstance(value, bool):
+        return True
+
+    if isinstance(value, Real):
+        return value in (0, 1)
+
+    if isinstance(value, str):
+        return value.strip().lower() in {"true", "false", "0", "1"}
+
+    return False
+
 def parse_finite_float(value: Any) -> float | None:
     """Parse *value* as a finite float, returning ``None`` when invalid.
 
