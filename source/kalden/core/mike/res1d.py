@@ -96,7 +96,26 @@ DEFAULT_OBJECT_TYPES: tuple[str, ...] = (
     "pump",
 )
 
+DEFAULT_FULL_LOAD_MAX_BYTES = 1_000_000_000
+
 _CACHE_SCHEMA_VERSION = "v2"
+
+_LOAD_MODE_ALIASES = {
+    "auto": "auto",
+    "full": "full",
+    "filtered": "filtered",
+    "lazy": "filtered",
+}
+
+
+def _normalize_load_mode(load_mode: str) -> str:
+    try:
+        return _LOAD_MODE_ALIASES[str(load_mode).strip().lower()]
+    except KeyError as exc:
+        raise ValueError(
+            "load_mode must be one of: "
+            "'auto', 'full', 'filtered', or 'lazy'."
+        ) from exc
 
 
 @dataclass(frozen=True, slots=True)
@@ -954,6 +973,8 @@ class Res1D:
         crs: str | int | None = None,
         keep_in_memory: bool = False,
         default_quantities: Sequence[str] = DEFAULT_QUANTITY_CANDIDATES,
+        load_mode: str = "auto",
+        full_load_max_bytes: int = DEFAULT_FULL_LOAD_MAX_BYTES,
     ) -> None:
         self.path = Path(path).expanduser()
         self.cache = cache
@@ -965,6 +986,14 @@ class Res1D:
         self.crs = crs
         self.keep_in_memory = keep_in_memory
         self.default_quantities = tuple(default_quantities)
+
+        self.load_mode = _normalize_load_mode(load_mode)
+        self.full_load_max_bytes = int(full_load_max_bytes)
+
+        if self.full_load_max_bytes <= 0:
+            raise ValueError(
+                "full_load_max_bytes must be greater than zero."
+            )
 
         self._res: Any | None = None
         self._memory_cache: dict[SeriesRef, pd.DataFrame] = {}
@@ -984,6 +1013,19 @@ class Res1D:
         """Backward-compatible alias for :attr:`path`."""
 
         return self.path
+    
+    @property
+    def file_size_bytes(self) -> int:
+        return self.path.stat().st_size
+
+    @property
+    def effective_load_mode(self) -> str:
+        if self.load_mode == "auto":
+            if self.file_size_bytes < self.full_load_max_bytes:
+                return "full"
+            return "filtered"
+
+        return self.load_mode
 
     def with_crs(self, crs: str | int | None) -> "Res1D":
         """Set the CRS metadata and return ``self`` for fluent use."""
@@ -1000,13 +1042,19 @@ class Res1D:
 
         if self._res is None:
             if self.path.suffix.lower() != ".res1d":
-                raise ValueError(f"Expected a .res1d file, got: {self.path}")
+                raise ValueError(
+                    f"Expected a .res1d file, got: {self.path}"
+                )
+
             if not self.path.is_file():
-                raise FileNotFoundError(f"res1d file not found: {self.path}")
+                raise FileNotFoundError(
+                    f"res1d file not found: {self.path}"
+                )
 
             import mikeio1d
 
             self._res = mikeio1d.open(str(self.path))
+
         return self._res
 
     @property
@@ -1188,6 +1236,7 @@ class Res1D:
             ref = _object_ref_from_source("reach", source_id)
             if ref.object_type == "reach":
                 yield ref.object_id, item
+
     def _iter_catchment_items(self) -> Iterator[tuple[str, Any]]:
         catchments = getattr(self.res, "catchments", None)
     
@@ -1224,6 +1273,29 @@ class Res1D:
 
         for ref, item in self._iter_object_items(object_type):
             yield ref.object_id, item
+    
+    def _source_object_ref(self, ref: SeriesRef) -> ObjectRef:
+        index = self.object_index()
+
+        matches = index.loc[
+            (index["object_type"] == ref.object_type)
+            & (index["object_id"].astype(str) == ref.object_id)
+        ]
+
+        if matches.empty:
+            raise KeyError(
+                f"{ref.object_type} object not found: "
+                f"{ref.object_id!r}"
+            )
+
+        row = matches.iloc[0]
+
+        return ObjectRef(
+            object_type=str(row["object_type"]),
+            object_id=str(row["object_id"]),
+            source_object_type=str(row["source_object_type"]),
+            source_object_id=str(row["source_object_id"]),
+        )
 
     def _lookup_object(self, object_type: str, object_id: str) -> Any:
         normalized = _normalize_object_type(object_type)
@@ -1483,24 +1555,64 @@ class Res1D:
                     self._memory_cache[ref] = cached
                 return _finalize(cached.copy())
 
-        obj = self._lookup_object(ref.object_type, ref.object_id)
+        # obj = self._lookup_object(ref.object_type, ref.object_id)
 
-        try:
-            quantity_obj = _get_readable_quantity(obj, ref.quantity)
-        except AttributeError as exc:
-            raise AttributeError(
-                f"{ref.object_type} {ref.object_id!r} has no quantity "
-                f"{ref.quantity!r}."
-            ) from exc
+        # try:
+        #     quantity_obj = _get_readable_quantity(obj, ref.quantity)
+        # except AttributeError as exc:
+        #     raise AttributeError(
+        #         f"{ref.object_type} {ref.object_id!r} has no quantity "
+        #         f"{ref.quantity!r}."
+        #     ) from exc
 
-        read = getattr(quantity_obj, "read", None)
-        if not callable(read):
-            raise AttributeError(
-                f"{ref.object_type} {ref.object_id!r} quantity "
-                f"{ref.quantity!r} is not readable."
+        # read = getattr(quantity_obj, "read", None)
+        # if not callable(read):
+        #     raise AttributeError(
+        #         f"{ref.object_type} {ref.object_id!r} quantity "
+        #         f"{ref.quantity!r} is not readable."
+        #     )
+
+        # frame = _normalize_timeseries(read())
+
+        ########### major filtered reading edit start
+
+        if self.effective_load_mode == "filtered":
+            try:
+                frame = self._read_filtered_series(ref)
+            except AttributeError as exc:
+                raise AttributeError(
+                    f"{ref.object_type} {ref.object_id!r} has no quantity "
+                    f"{ref.quantity!r}."
+                ) from exc
+
+        else:
+            obj = self._lookup_object(
+                ref.object_type,
+                ref.object_id,
             )
 
-        frame = _normalize_timeseries(read())
+            try:
+                quantity_obj = _get_readable_quantity(
+                    obj,
+                    ref.quantity,
+                )
+            except AttributeError as exc:
+                raise AttributeError(
+                    f"{ref.object_type} {ref.object_id!r} has no quantity "
+                    f"{ref.quantity!r}."
+                ) from exc
+
+            read = getattr(quantity_obj, "read", None)
+
+            if not callable(read):
+                raise AttributeError(
+                    f"{ref.object_type} {ref.object_id!r} quantity "
+                    f"{ref.quantity!r} is not readable."
+                )
+
+            frame = _normalize_timeseries(read())
+        
+        ########### major filtered reading edit end 
 
         self._write_dataframe_cache(frame, stem)
 
@@ -1588,6 +1700,78 @@ class Res1D:
     
             return None
     
+    def _read_filtered_series(
+        self,
+        ref: SeriesRef,
+    ) -> pd.DataFrame:
+        source_ref = self._source_object_ref(ref)
+
+        filter_argument = {
+            "node": "nodes",
+            "reach": "reaches",
+            "catchment": "catchments",
+        }[source_ref.source_object_type]
+
+        open_kwargs: dict[str, Any] = {
+            filter_argument: [source_ref.source_object_id],
+        }
+
+        # Apply the quantity filter only when this is a native result
+        # quantity. Derived quantities may require several native inputs.
+        native_quantities = set(
+            str(quantity)
+            for quantity in getattr(self.res, "quantities", [])
+        )
+
+        if ref.quantity in native_quantities:
+            open_kwargs["quantities"] = [ref.quantity]
+
+        import mikeio1d
+
+        filtered_res = mikeio1d.open(
+            str(self.path),
+            **open_kwargs,
+        )
+
+        try:
+            collection_name = {
+                "node": "nodes",
+                "reach": "reaches",
+                "catchment": "catchments",
+            }[source_ref.source_object_type]
+
+            collection = getattr(filtered_res, collection_name)
+            obj = collection[source_ref.source_object_id]
+
+            # Reach collections can occasionally return a list.
+            if isinstance(obj, list):
+                if len(obj) != 1:
+                    raise KeyError(
+                        "Filtered reader returned multiple objects for "
+                        f"{source_ref.source_object_id!r}."
+                    )
+                obj = obj[0]
+
+            quantity_obj = _get_readable_quantity(
+                obj,
+                ref.quantity,
+            )
+
+            read = getattr(quantity_obj, "read", None)
+
+            if not callable(read):
+                raise AttributeError(
+                    f"{ref.object_type} {ref.object_id!r} quantity "
+                    f"{ref.quantity!r} is not readable."
+                )
+
+            return _normalize_timeseries(read())
+
+        finally:
+            close = getattr(filtered_res, "close", None)
+            if callable(close):
+                close()
+
     def combine_series(
         self,
         refs: Iterable[SeriesRef] | None = None,
