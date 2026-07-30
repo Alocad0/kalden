@@ -1020,12 +1020,23 @@ class Res1D:
 
     @property
     def effective_load_mode(self) -> str:
-        if self.load_mode == "auto":
-            if self.file_size_bytes < self.full_load_max_bytes:
-                return "full"
-            return "filtered"
+        """
+        Does not work because there is no real lazy-loading available in mikeio1d.
+        mikeio1d still calls ResultData.LoadData() method  everytime and the
+        filtered approach just avoids to keep it in memory.
+        --> filtered approach ignored for now
+        """
+        if self.load_mode == "full":
+            return "full"
+        else:
+            print("Filtered / auto load modes are deactivated because there is no real lazy-loading available in mikeio1d.")
+            print(f"File is fully loaded in memory {self.file_size_bytes/1e6:.0f} MB")}")
+            # if self.load_mode == "auto":
+            #     if self.file_size_bytes < self.full_load_max_bytes:
+            #         return "full"
+            #     return "filtered"
 
-        return self.load_mode
+            # return self.load_mode
 
     def with_crs(self, crs: str | int | None) -> "Res1D":
         """Set the CRS metadata and return ``self`` for fluent use."""
