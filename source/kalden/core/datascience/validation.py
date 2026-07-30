@@ -15,7 +15,12 @@ import math
 from typing import Any
 from numbers import Real
 
-__all__ = ["_is_numeric", "parse_finite_float"]
+__all__ = [
+    "_is_numeric",
+    "_is_boolean",
+    "parse_boolean",
+    "parse_finite_float",
+]
 
 
 from numbers import Real
@@ -55,6 +60,25 @@ def _is_boolean(value: Any) -> bool:
         return value.strip().lower() in {"true", "false", "0", "1"}
 
     return False
+
+def parse_boolean(value: Any) -> bool:
+    """Convert a supported boolean representation to bool."""
+    if isinstance(value, bool):
+        return value
+
+    if isinstance(value, Real) and value in (0, 1):
+        return bool(value)
+
+    if isinstance(value, str):
+        value = value.strip().lower()
+
+        if value in {"true", "1"}:
+            return True
+
+        if value in {"false", "0"}:
+            return False
+
+    raise ValueError(f"Invalid boolean value: {value!r}")
 
 def parse_finite_float(value: Any) -> float | None:
     """Parse *value* as a finite float, returning ``None`` when invalid.
