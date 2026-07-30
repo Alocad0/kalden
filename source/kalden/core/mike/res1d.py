@@ -1029,8 +1029,11 @@ class Res1D:
         if self.load_mode == "full":
             return "full"
         else:
-            print("Filtered / auto load modes are deactivated because there is no real lazy-loading available in mikeio1d.")
-            print(f"File is fully loaded in memory ({self.file_size_bytes/1e6:.0f} MB)")
+            # Prints warning message -> also abandoned because annoying
+            # print("Filtered / auto load modes are deactivated because there is no real lazy-loading available in mikeio1d.")
+            # print(f"File is fully loaded in memory ({self.file_size_bytes/1e6:.0f} MB)")
+            return "full"
+
             # if self.load_mode == "auto":
             #     if self.file_size_bytes < self.full_load_max_bytes:
             #         return "full"
