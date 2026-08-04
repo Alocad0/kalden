@@ -23,9 +23,10 @@ __all__ = [
 ]
 
 
-from numbers import Real
-
 def _is_numeric(value):
+    if isinstance(value, bool):
+        return False
+
     if isinstance(value, Real):
         return True
 
