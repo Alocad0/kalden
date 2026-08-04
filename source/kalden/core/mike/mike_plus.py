@@ -11,9 +11,12 @@ Created: 2026-01-15
 from __future__ import annotations
 
 import sqlite3
+import shutil
 from os import PathLike
 from pathlib import Path
-from typing import Any
+from tempfile import TemporaryDirectory
+from typing import Any, Iterator
+from contextlib import contextmanager
 
 import geopandas as gpd
 import matplotlib.pyplot as plt
@@ -22,6 +25,64 @@ import pandas as pd
 from shapely.geometry import LineString
 from shapely.wkt import loads
 from tqdm.auto import tqdm
+
+
+@contextmanager
+def copied_sqlite_connection(
+    source_path: str | Path,
+) -> Iterator[sqlite3.Connection]:
+    """
+    Copy a closed SQLite database to a temporary directory and open only
+    the temporary copy.
+
+    The original file is never opened through SQLite.
+    """
+    source = Path(source_path).expanduser().resolve(strict=True)
+
+    if not source.is_file():
+        raise ValueError(f"Not a regular file: {source}")
+
+    wal = Path(f"{source}-wal")
+    shm = Path(f"{source}-shm")
+    journal = Path(f"{source}-journal")
+
+    active_sidecars = [
+        path
+        for path in (wal, shm, journal)
+        if path.exists()
+    ]
+
+    if active_sidecars:
+        formatted_paths = ", ".join(str(path) for path in active_sidecars)
+        raise RuntimeError(
+            "The database may be active or require recovery. "
+            f"Sidecar files found: {formatted_paths}"
+        )
+
+    with TemporaryDirectory(prefix="kalden-mikeplus-") as temporary_directory:
+        copied_database = (
+            Path(temporary_directory) / source.name
+        )
+
+        # Ordinary operating-system file copy. SQLite never sees the source.
+        shutil.copy2(source, copied_database)
+
+        copied_uri = (
+            f"{copied_database.resolve().as_uri()}"
+            "?mode=ro&immutable=1"
+        )
+
+        connection = sqlite3.connect(
+            copied_uri,
+            uri=True,
+            isolation_level=None,
+        )
+
+        try:
+            connection.execute("PRAGMA query_only = ON")
+            yield connection
+        finally:
+            connection.close()
 
 
 class MPlusModel:
@@ -127,7 +188,11 @@ class MPlusModel:
             ORDER BY name COLLATE NOCASE;
         """
 
-        with sqlite3.connect(str(self.db_path)) as connection:
+        # with sqlite3.connect(str(self.db_path)) as connection:
+        #     rows = connection.execute(query, object_types).fetchall()
+        
+        # Safer connection to Database - must ensure there is no concurrent use of database (incomplete data)
+        with copied_sqlite_connection(self.db_path) as connection:
             rows = connection.execute(query, object_types).fetchall()
 
         names = [row[0] for row in rows]
@@ -177,7 +242,99 @@ class MPlusModel:
             RuntimeError:
                 If the SpatiaLite extension cannot be loaded.
         """
-        with sqlite3.connect(str(self.db_path)) as connection:
+        # with sqlite3.connect(str(self.db_path)) as connection:
+        #     connection.enable_load_extension(True)
+
+        #     try:
+        #         connection.execute('SELECT load_extension("mod_spatialite")')
+        #     except sqlite3.Error as exc:
+        #         raise RuntimeError(
+        #             "Could not load the 'mod_spatialite' SQLite extension."
+        #         ) from exc
+
+        #     table_row = connection.execute(
+        #         """
+        #         SELECT name
+        #         FROM sqlite_master
+        #         WHERE type IN ('table', 'view')
+        #           AND name = ? COLLATE NOCASE
+        #         """,
+        #         (table_name,),
+        #     ).fetchone()
+
+        #     if table_row is None:
+        #         raise ValueError(f"Table or view does not exist: {table_name}")
+
+        #     actual_table_name = table_row[0]
+        #     quoted_table = self._quote_identifier(actual_table_name)
+
+        #     table_info = connection.execute(
+        #         f"PRAGMA table_info({quoted_table})"
+        #     ).fetchall()
+
+        #     column_names = [column[1] for column in table_info]
+        #     geometry_matches = [
+        #         column
+        #         for column in column_names
+        #         if column.casefold() == geometry_column.casefold()
+        #     ]
+
+        #     if not geometry_matches:
+        #         raise ValueError(
+        #             f"Geometry column '{geometry_column}' was not found "
+        #             f"in table '{actual_table_name}'. Available columns: "
+        #             f"{column_names}"
+        #         )
+
+        #     if len(geometry_matches) > 1:
+        #         raise ValueError(
+        #             f"Multiple columns match geometry column "
+        #             f"'{geometry_column}': {geometry_matches}"
+        #         )
+
+        #     actual_geometry_column = geometry_matches[0]
+        #     attribute_columns = [
+        #         column
+        #         for column in column_names
+        #         if column != actual_geometry_column
+        #     ]
+
+        #     wkt_alias = "_kalden_wkt_geometry"
+        #     while wkt_alias in column_names:
+        #         wkt_alias = f"_{wkt_alias}"
+
+        #     select_expressions = [
+        #         self._quote_identifier(column)
+        #         for column in attribute_columns
+        #     ]
+        #     select_expressions.append(
+        #         f"AsText({self._quote_identifier(actual_geometry_column)}) "
+        #         f"AS {self._quote_identifier(wkt_alias)}"
+        #     )
+
+        #     query = f"""
+        #         SELECT
+        #             {", ".join(select_expressions)}
+        #         FROM {quoted_table};
+        #     """
+
+        #     dataframe = pd.read_sql_query(query, connection)
+
+        # dataframe["geometry"] = dataframe[wkt_alias].map(
+        #     lambda value: loads(value)
+        #     if isinstance(value, str) and value.strip()
+        #     else None
+        # )
+
+        # return gpd.GeoDataFrame(
+        #     dataframe.drop(columns=wkt_alias),
+        #     geometry="geometry",
+        #     crs=crs,
+        # )
+
+        # Safer connection: queries and SpatiaLite operate only on the temporary copy.
+        # The original database is never passed to sqlite3.connect().
+        with copied_sqlite_connection(self.db_path) as connection:
             connection.enable_load_extension(True)
 
             try:
@@ -186,19 +343,25 @@ class MPlusModel:
                 raise RuntimeError(
                     "Could not load the 'mod_spatialite' SQLite extension."
                 ) from exc
+            finally:
+                # Loading extensions should only be enabled for the shortest
+                # possible period.
+                connection.enable_load_extension(False)
 
             table_row = connection.execute(
                 """
                 SELECT name
                 FROM sqlite_master
                 WHERE type IN ('table', 'view')
-                  AND name = ? COLLATE NOCASE
+                AND name = ? COLLATE NOCASE
                 """,
                 (table_name,),
             ).fetchone()
 
             if table_row is None:
-                raise ValueError(f"Table or view does not exist: {table_name}")
+                raise ValueError(
+                    f"Table or view does not exist: {table_name}"
+                )
 
             actual_table_name = table_row[0]
             quoted_table = self._quote_identifier(actual_table_name)
@@ -208,6 +371,7 @@ class MPlusModel:
             ).fetchall()
 
             column_names = [column[1] for column in table_info]
+
             geometry_matches = [
                 column
                 for column in column_names
@@ -223,11 +387,12 @@ class MPlusModel:
 
             if len(geometry_matches) > 1:
                 raise ValueError(
-                    f"Multiple columns match geometry column "
+                    "Multiple columns match geometry column "
                     f"'{geometry_column}': {geometry_matches}"
                 )
 
             actual_geometry_column = geometry_matches[0]
+
             attribute_columns = [
                 column
                 for column in column_names
@@ -242,6 +407,7 @@ class MPlusModel:
                 self._quote_identifier(column)
                 for column in attribute_columns
             ]
+
             select_expressions.append(
                 f"AsText({self._quote_identifier(actual_geometry_column)}) "
                 f"AS {self._quote_identifier(wkt_alias)}"
@@ -255,17 +421,20 @@ class MPlusModel:
 
             dataframe = pd.read_sql_query(query, connection)
 
-        dataframe["geometry"] = dataframe[wkt_alias].map(
-            lambda value: loads(value)
-            if isinstance(value, str) and value.strip()
-            else None
-        )
+            dataframe["geometry"] = dataframe[wkt_alias].map(
+                lambda value: (
+                    loads(value)
+                    if isinstance(value, str) and value.strip()
+                    else None
+                )
+            )
 
-        return gpd.GeoDataFrame(
-            dataframe.drop(columns=wkt_alias),
-            geometry="geometry",
-            crs=crs,
-        )
+            return gpd.GeoDataFrame(
+                dataframe.drop(columns=wkt_alias),
+                geometry="geometry",
+                crs=crs,
+            )
+
 
     @staticmethod
     def build_link_geometries_from_nodes(
