@@ -1152,9 +1152,9 @@ class Res1D:
         return (
             self.cache_dir
             / "series"
-            / _safe_cache_token(ref.object_type)
-            / _safe_cache_token(ref.quantity)
-            / _safe_cache_token(ref.object_id)
+            / _safe_cache_token(ref.object_type, max_length=12)
+            / _safe_cache_token(ref.quantity, max_length=24)
+            / _safe_cache_token(ref.object_id, max_length=24)
         )
 
     @staticmethod
