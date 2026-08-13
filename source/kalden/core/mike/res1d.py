@@ -86,19 +86,22 @@ DEFAULT_QUANTITY_CANDIDATES: tuple[str, ...] = (
 SPECIAL_REACH_PREFIXES: dict[str, str] = {
     "Weir": "weir",
     "Pump": "pump",
+    "Valve": "valve",
+    "Orifice": "orifice",
 }
+
+SPECIAL_REACH_TYPES = tuple(SPECIAL_REACH_PREFIXES.values())
 
 DEFAULT_OBJECT_TYPES: tuple[str, ...] = (
     "node",
     "reach",
     "catchment",
-    "weir",
-    "pump",
+    *SPECIAL_REACH_TYPES,
 )
 
 DEFAULT_FULL_LOAD_MAX_BYTES = 1_000_000_000
 
-_CACHE_SCHEMA_VERSION = "v2"
+_CACHE_SCHEMA_VERSION = "v3"
 
 _LOAD_MODE_ALIASES = {
     "auto": "auto",
@@ -248,15 +251,16 @@ def _normalize_object_type(object_type: str) -> str:
       "links": "reach",
       "catchment": "catchment",
       "catchments": "catchment",
-      "weir": "weir",
-      "weirs": "weir",
-      "pump": "pump",
-      "pumps": "pump",
     }
+
+    for object_type in SPECIAL_REACH_TYPES:
+      aliases[object_type] = object_type
+      aliases[f"{object_type}s"] = object_type
+  
     try:
         return aliases[normalized]
     except KeyError as exc:
-        allowed = "'node', 'reach', 'catchment', 'weir', 'pump'"
+        allowed = "'node', 'reach', 'catchment', 'weir', 'pump', 'valve', 'orifice'"
         raise ValueError(f"object_type must be one of: {allowed}.") from exc
 
 
@@ -1341,7 +1345,7 @@ class Res1D:
         
             raise KeyError(f"catchment object not found: {object_id!r}")
 
-        # Reaches, weirs, and pumps are all stored under res.reaches.
+        # Reaches, weirs, pumps, valves, and orifices are all stored under res.reaches.
         reaches = self.res.reaches
         storage_candidates = _storage_id_candidates(normalized, object_id)
 
