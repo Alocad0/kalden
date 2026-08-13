@@ -101,6 +101,8 @@ DEFAULT_OBJECT_TYPES: tuple[str, ...] = (
 
 DEFAULT_FULL_LOAD_MAX_BYTES = 1_000_000_000
 
+_WINDOWS_MAX_PATH = 260
+
 _CACHE_SCHEMA_VERSION = "v3"
 
 _LOAD_MODE_ALIASES = {
@@ -1165,6 +1167,22 @@ class Res1D:
             ("csv", stem.with_suffix(".csv")),
         ]
 
+    def _check_windows_path_length(path: Path) -> None:
+        if os.name != "nt":
+            return
+    
+        resolved = str(path.resolve())
+        path_length = len(resolved)
+    
+        if path_length >= _WINDOWS_MAX_PATH:
+            raise OSError(
+                "Kalden cache path exceeds the classic Windows MAX_PATH limit: "
+                f"{path_length} characters.\n"
+                f"Path: {resolved}\n\n"
+                "Use a shorter `cache_dir`, move the .res1d file to a shorter path, "
+                "or initialize Res1D with `cache=False`."
+            )
+
     def _read_dataframe_cache(self, stem: Path) -> pd.DataFrame | None:
         if not self.cache:
             return None
@@ -1184,9 +1202,18 @@ class Res1D:
 
         return None
 
-    def _write_dataframe_cache(self, frame: pd.DataFrame, stem: Path) -> Path | None:
+    def _write_dataframe_cache(
+        self,
+        frame: pd.DataFrame,
+        stem: Path,
+    ) -> Path | None:
+      
         if not self.cache:
             return None
+
+        # Check the longest cache candidate before creating/writing anything.
+        for _fmt, file_path in self._cache_candidates(stem):
+            _check_windows_path_length(file_path)
 
         stem.parent.mkdir(parents=True, exist_ok=True)
         errors: list[str] = []
