@@ -1028,25 +1028,10 @@ class Res1D:
     @property
     def effective_load_mode(self) -> str:
         """
-        Does not work because there is no real lazy-loading available in mikeio1d.
-        mikeio1d still calls ResultData.LoadData() method  everytime and the
-        filtered approach just avoids to keep it in memory.
-        --> filtered approach ignored for now
+        Filtered loading is currently disabled because mikeio1d
+        ultimately loads the complete ResultData.
         """
-        if self.load_mode == "full":
-            return "full"
-        else:
-            # Prints warning message
-            print("Filtered loading mode is deactivated because there is no real lazy-loading available in mikeio1d.")
-            print(f"File is in effect fully loaded into memory ({self.file_size_bytes/1e6:.0f} MB)")
-            return "full"
-
-            # if self.load_mode == "auto":
-            #     if self.file_size_bytes < self.full_load_max_bytes:
-            #         return "full"
-            #     return "filtered"
-
-            # return self.load_mode
+        return "full"
 
     def with_crs(self, crs: str | int | None) -> "Res1D":
         """Set the CRS metadata and return ``self`` for fluent use."""
@@ -1055,25 +1040,35 @@ class Res1D:
         return self
 
     def open(self) -> Any:
-        """Open the result file lazily with ``mikeio1d.open``.
-
+        """
+        Open the result file lazily with mikeio1d.open.
+        
         ``mikeio1d`` is intentionally imported here instead of at module import
         time so the package remains importable in environments without MIKE IO.
         """
-
+    
         if self._res is None:
             if self.path.suffix.lower() != ".res1d":
                 raise ValueError(
                     f"Expected a .res1d file, got: {self.path}"
                 )
-
+    
             if not self.path.is_file():
                 raise FileNotFoundError(
                     f"res1d file not found: {self.path}"
                 )
-
+    
+            if self.load_mode != "full":
+                warnings.warn(
+                    "Filtered loading mode is currently deactivated because "
+                    "mikeio1d does not provide true lazy loading. "
+                    f"The file is effectively loaded into memory "
+                    f"({self.file_size_bytes / 1e6:.0f} MB).",
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+    
             import mikeio1d
-
             self._res = mikeio1d.open(str(self.path))
 
         return self._res
