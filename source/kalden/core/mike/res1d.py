@@ -30,6 +30,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import Any, TYPE_CHECKING
 from dataclasses import dataclass
+import os
 from os import PathLike as OsPathLike
 from pathlib import Path
 import math
@@ -1167,6 +1168,7 @@ class Res1D:
             ("csv", stem.with_suffix(".csv")),
         ]
 
+    @staticmethod
     def _check_windows_path_length(path: Path) -> None:
         if os.name != "nt":
             return
@@ -1213,7 +1215,7 @@ class Res1D:
 
         # Check the longest cache candidate before creating/writing anything.
         for _fmt, file_path in self._cache_candidates(stem):
-            _check_windows_path_length(file_path)
+            self._check_windows_path_length(file_path)
 
         stem.parent.mkdir(parents=True, exist_ok=True)
         errors: list[str] = []
