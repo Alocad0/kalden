@@ -1037,7 +1037,7 @@ class Res1D:
             return "full"
         else:
             # Prints warning message
-            print("Filtered loadind mode is deactivated because there is no real lazy-loading available in mikeio1d.")
+            print("Filtered loading mode is deactivated because there is no real lazy-loading available in mikeio1d.")
             print(f"File is in effect fully loaded into memory ({self.file_size_bytes/1e6:.0f} MB)")
             return "full"
 
