@@ -724,7 +724,7 @@ class MPlusModel:
         *,
         connection_node_column: str = "NodeID",
         catchment_id_column: str = "muid",
-        catchment_geometry_column: str = "geometry_catchment",
+        catchment_geometry_column: str = "geometry",
         node_geometry_column: str = "geometry_node",
         from_node_column: str = "FromNodeID",
         to_node_column: str = "ToNodeID",
