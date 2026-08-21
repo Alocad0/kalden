@@ -2,7 +2,7 @@ name: Test Python package
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, dev-review-fixes]
   pull_request:
 
 permissions:
