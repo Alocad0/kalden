@@ -291,6 +291,7 @@ def test_load_outputs_preserves_subhour_times_and_builds_altitudes(
     assert model.time.equals(outputs["temperature"].index)
     assert model.depths_output.tolist() == [0, -1, -2]
     assert model.altitudes_output.tolist() == [500, 499, 498]
+    assert model.depth_to_altitude is model.depth_to_altitude_table
     assert model.output_variables["Variable"].tolist() == ["temperature"]
 
     converted = model.depths_to_altitudes(outputs["temperature"])
@@ -324,6 +325,23 @@ def test_bottom_referenced_outputs_are_shifted_to_surface_depths(
     result = SimstratConfig(setup_path).load_outputs(sep=",")["temperature"]
 
     assert result.columns.tolist() == [-2.0, -1.0, 0.0]
+
+
+def test_output_resampling_uses_pandas3_safe_frequency_logic(
+    tmp_path: Path,
+) -> None:
+    setup_path = _write_setup(tmp_path)
+    _write_output(setup_path, times=(0, 1 / 24, 2 / 24))
+
+    result = SimstratConfig(setup_path).load_outputs(
+        sep=",",
+        resample="30min",
+    )["temperature"]
+
+    assert result.index.tolist() == list(
+        pd.date_range("2024-01-01", periods=5, freq="30min")
+    )
+    assert result.iloc[1, 0] == pytest.approx(10.5)
 
 
 def test_output_loading_rejects_duplicate_timestamps(tmp_path: Path) -> None:

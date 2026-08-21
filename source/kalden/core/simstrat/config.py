@@ -897,11 +897,6 @@ class SimstratConfig:
     ) -> dict[str, pd.DataFrame]:
         """Load model outputs without rounding or collapsing timestamps."""
         errors = _validate_error_mode(errors)
-        if resample:
-            raise NotImplementedError(
-                "Output resampling is not part of the core reader. "
-                "Load exact timestamps and resample explicitly with pandas."
-            )
         if not self.result_path.is_dir():
             raise FileNotFoundError(
                 f"Simstrat output directory not found: {self.result_path}"
@@ -940,6 +935,10 @@ class SimstratConfig:
 
                 if normalize_depths:
                     frame = self._normalize_output_depth_columns(frame)
+                if resample:
+                    from kalden.core.datascience.pandas import df_smart_resample
+
+                    frame = df_smart_resample(frame, resample)
                 self.outputs[path.stem] = frame
             except Exception as exc:
                 self._handle_read_error(path.stem, path, exc, errors)
@@ -1034,6 +1033,11 @@ class SimstratConfig:
         if var_name in self.inputs:
             return "input"
         return None
+
+    @property
+    def depth_to_altitude(self) -> pd.Series | None:
+        """Compatibility alias for the canonical altitude mapping."""
+        return self.depth_to_altitude_table
 
     @staticmethod
     def df_simstrat_clean_col_name(column: object) -> float:

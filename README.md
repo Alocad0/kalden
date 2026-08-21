@@ -57,6 +57,26 @@ inputs = model.load_inputs()
 outputs = model.load_outputs(sep=",")
 ```
 
+Generate and atomically replace a live Simstrat inflow file without forcing
+all values to two decimals:
+
+```python
+from kalden.core.simstrat import write_inflow_file
+
+write_inflow_file(
+    "path/to/Qin.dat",
+    flow_dataframe,
+    model.reference_date,
+    deep_flows=[{"depth": -2, "col": "Q", "header": "Q [m3/s]"}],
+    surface_flows=[],
+)
+```
+
+Proposed notebook replacements using these APIs are available in:
+
+- `examples/notebooks/Simstrat_inputs_v2.ipynb`
+- `examples/notebooks/Simstrat_outputs_analysis_v2.ipynb`
+
 ## Project Structure
 
 - `source/kalden/`

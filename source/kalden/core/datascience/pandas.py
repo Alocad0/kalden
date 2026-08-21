@@ -16,8 +16,6 @@ import calendar
 import re
 import numpy as np
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 
 __all__ = [
     "SeriesUtils",
@@ -356,6 +354,8 @@ class DataFrameUtils:
         )
 
         if plot:
+            import plotly.express as px
+
             fig = px.line(
                 x=deltas.index,
                 y=delta_seconds,
@@ -569,6 +569,8 @@ class DataFrameUtils:
             raise ValueError(f"Interpolation failed: {exc}") from exc
 
         if plot:
+            import plotly.graph_objects as go
+
             if plot_column == "":
                 raise ValueError("'plot_column' must be specified")
             if plot_column not in df.columns:
@@ -952,6 +954,8 @@ class DataFrameUtils:
         ylabel: str = "",
     ):
         """Plot selected DataFrame columns with Plotly."""
+        import plotly.graph_objects as go
+
         if not columns:
             columns = df.select_dtypes(include="number").columns.tolist()
 
