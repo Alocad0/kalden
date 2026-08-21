@@ -8,6 +8,7 @@ from kalden.core.spatial.io import (
     export_gdf,
     insert_qml_style_into_gpkg,
     list_builtin_qml_styles,
+    list_spatial_layers,
     read_spatial_file,
 )
 
@@ -92,6 +93,7 @@ def test_read_spatial_file_requires_layer_for_multi_layer_gpkg(tmp_path) -> None
     )
     assert export_gdf(first, path, layer_name="first")
     assert export_gdf(second, path, layer_name="second")
+    assert list_spatial_layers(path) == ["first", "second"]
 
     with pytest.raises(ValueError, match="multiple layers"):
         read_spatial_file(path)

@@ -12,6 +12,16 @@ from importlib.resources import files
 PathLike = Union[str, Path]
 
 
+def list_spatial_layers(path: PathLike) -> list[str]:
+    """Return the layer names available in a spatial data source."""
+    path = Path(path)
+
+    if not path.is_file():
+        raise FileNotFoundError(f"Spatial file not found: {path}")
+
+    return list(fiona.listlayers(path))
+
+
 def read_spatial_file(
     path: PathLike,
     layer: Optional[str] = None,

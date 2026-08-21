@@ -167,7 +167,9 @@ def test_load_config_reports_missing_required_columns(monkeypatch) -> None:
     def fake_read_excel(path, sheet_name):
         if sheet_name == "Jobs":
             return pd.DataFrame({"job_id": ["job"]})
-        return pd.DataFrame(columns=csv_to_dfs0.REQUIRED_ITEM_COLUMNS)
+        return pd.DataFrame(
+            columns=sorted(csv_to_dfs0.REQUIRED_ITEM_COLUMNS)
+        )
 
     monkeypatch.setattr(pd, "read_excel", fake_read_excel)
 
