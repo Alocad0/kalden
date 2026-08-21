@@ -2,8 +2,9 @@ name: Test Python package
 
 on:
   push:
-    branches: [dev, dev-review-fixes]
+    branches: [dev, dev-codex]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
