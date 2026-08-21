@@ -12,6 +12,7 @@ compatibility with earlier utility-style usage.
 
 from __future__ import annotations
 
+import calendar
 import re
 import numpy as np
 import pandas as pd
@@ -30,6 +31,7 @@ __all__ = [
     "df_check_duplicates",
     "df_time_index_summary",
     "df_crop_to_common_index",
+    "df_convert_numeric_like_columns",
     "df_resample",
     "df_smart_resample",
     "df_detect_frequency",
@@ -612,7 +614,25 @@ class DataFrameUtils:
         except Exception as exc:
             raise ValueError(f"Failed to detect frequency: {exc}") from exc
 
-        tgt_td = pd.tseries.frequencies.to_offset(target_freq).delta
+        target_offset = pd.tseries.frequencies.to_offset(target_freq)
+
+        inferred_frequency = None
+        if len(df.index) >= 3:
+            try:
+                inferred_frequency = pd.infer_freq(df.index)
+            except ValueError:
+                inferred_frequency = None
+
+        if inferred_frequency is not None:
+            source_offset = pd.tseries.frequencies.to_offset(inferred_frequency)
+            if source_offset == target_offset:
+                return df.copy()
+
+        anchor = df.index[len(df.index) // 2]
+        tgt_td = (anchor + target_offset) - anchor
+
+        if tgt_td <= pd.Timedelta(0):
+            raise ValueError(f"target_freq must advance time, got {target_freq!r}")
 
         if src_td == tgt_td:
             return df.copy()
@@ -637,15 +657,51 @@ class DataFrameUtils:
         return df.reindex(full_idx)
 
     @staticmethod
-    def duplicate_year(df: pd.DataFrame, start_year: int, end_year: int) -> pd.DataFrame:
-        """Duplicate a DataFrame with a DateTimeIndex across a year range."""
+    def duplicate_year(
+        df: pd.DataFrame,
+        start_year: int,
+        end_year: int,
+        leap_day: str = "drop",
+    ) -> pd.DataFrame:
+        """Duplicate a DataFrame across years with an explicit leap-day policy."""
+        if not isinstance(df.index, pd.DatetimeIndex):
+            raise TypeError("DataFrame index must be a pandas DateTimeIndex")
+        if start_year > end_year:
+            raise ValueError("start_year must be less than or equal to end_year")
+        if leap_day not in {"drop", "feb28", "mar1", "raise"}:
+            raise ValueError("leap_day must be one of: drop, feb28, mar1, raise")
+
         dfs = []
         for year in range(start_year, end_year + 1):
             df_copy = df.copy()
-            df_copy.index = df_copy.index.map(lambda d: d.replace(year=year))
+
+            leap_mask = (df_copy.index.month == 2) & (df_copy.index.day == 29)
+            if leap_mask.any() and not calendar.isleap(year):
+                if leap_day == "raise":
+                    raise ValueError(
+                        f"Cannot map February 29 to non-leap year {year}."
+                    )
+                if leap_day == "drop":
+                    df_copy = df_copy.loc[~leap_mask].copy()
+
+            def replace_year(timestamp):
+                if (
+                    timestamp.month == 2
+                    and timestamp.day == 29
+                    and not calendar.isleap(year)
+                ):
+                    if leap_day == "feb28":
+                        return timestamp.replace(year=year, day=28)
+                    if leap_day == "mar1":
+                        return timestamp.replace(year=year, month=3, day=1)
+                return timestamp.replace(year=year)
+
+            df_copy.index = df_copy.index.map(replace_year)
             dfs.append(df_copy)
 
-        return pd.concat(dfs)
+        if not dfs:
+            return df.iloc[0:0].copy()
+        return pd.concat(dfs).sort_index()
 
     @staticmethod
     def compute_volume(
@@ -1039,9 +1095,14 @@ def df_reindex_to_hourly(df):
     return DataFrameUtils.reindex_to_hourly(df)
 
 
-def df_duplicate_year(df, start_year, end_year):
+def df_duplicate_year(df, start_year, end_year, leap_day="drop"):
     """Compatibility wrapper for ``DataFrameUtils.duplicate_year()``."""
-    return DataFrameUtils.duplicate_year(df, start_year=start_year, end_year=end_year)
+    return DataFrameUtils.duplicate_year(
+        df,
+        start_year=start_year,
+        end_year=end_year,
+        leap_day=leap_day,
+    )
 
 
 def df_compute_volume(

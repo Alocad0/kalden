@@ -6,6 +6,9 @@ def is_numeric(val):
     (int or float).  Handles scientific notation, hexadecimal integers, and the special
     floating‑point literals ``nan`` and ``inf``.
     """
+    if isinstance(val, bool):
+        return False
+
     # Direct numeric types
     if isinstance(val, (int, float)):
         return True

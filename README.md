@@ -30,6 +30,7 @@ Optional features:
 pip install .[plot-export]
 pip install .[mikeplus]
 pip install .[widgets]
+pip install .[maps]
 ```
 
 ## Quick Start

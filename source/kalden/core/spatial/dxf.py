@@ -36,6 +36,15 @@ class DXFFile:
         """
         """
         output = {}
+
+        def make_gdf(features, extra_columns=()):
+            return gpd.GeoDataFrame(
+                features,
+                columns=["geometry", "layer", *extra_columns],
+                geometry="geometry",
+                crs=self.crs,
+            )
+
         try:
             if 'LINE' in feature_type_list:
                 features = []
@@ -44,7 +53,7 @@ class DXFFile:
                     end = tuple(line.dxf.end)[:2]      # Vec3 → (x, y)
                     geom = LineString([start, end])
                     features.append({'geometry': geom, 'layer': line.dxf.layer})
-                lines_gdf = gpd.GeoDataFrame(features, crs=self.crs)
+                lines_gdf = make_gdf(features)
                 lines_gdf['length'] = lines_gdf.geometry.length
                 output["LINE"] = lines_gdf
 
@@ -57,7 +66,7 @@ class DXFFile:
                     if len(vertices) > 1:
                         geom = LineString(vertices)
                         features.append({'geometry': geom, 'layer': pline.dxf.layer})
-                polylines_gdf = gpd.GeoDataFrame(features, crs=self.crs)
+                polylines_gdf = make_gdf(features)
                 polylines_gdf['length'] = polylines_gdf.geometry.length
                 output["LWPOLYLINE"] = polylines_gdf
 
@@ -69,7 +78,7 @@ class DXFFile:
                     y = point.dxf.location.y
                     geom = Point(x, y)
                     points_features.append({'geometry': geom, 'layer': point.dxf.layer})
-                points_gdf = gpd.GeoDataFrame(points_features, crs=self.crs)
+                points_gdf = make_gdf(points_features)
                 output["POINT"] = points_gdf
 
             if 'HATCH' in feature_type_list:
@@ -86,7 +95,7 @@ class DXFFile:
                                     'layer': hatch.dxf.layer,
                                     'pattern': hatch.dxf.pattern_name  # SOLID, ANSI31, etc.
                                 })
-                hatches_gdf = gpd.GeoDataFrame(hatch_features, crs=self.crs)
+                hatches_gdf = make_gdf(hatch_features, ("pattern",))
                 output["HATCH"] = hatches_gdf
 
             if 'CIRCLE' in feature_type_list:
@@ -99,7 +108,7 @@ class DXFFile:
                         'layer': circle.dxf.layer,
                         'radius': circle.dxf.radius
                     })
-                circles_gdf = gpd.GeoDataFrame(circle_features, crs=self.crs)
+                circles_gdf = make_gdf(circle_features, ("radius",))
                 output["CIRCLE"] = circles_gdf
 
             if ('TEXT' in feature_type_list) or ('MTEXT' in feature_type_list):
@@ -120,7 +129,7 @@ class DXFFile:
                         'text': text_content,
                         'height': height
                     })
-                texts_gdf = gpd.GeoDataFrame(text_features, crs=self.crs)
+                texts_gdf = make_gdf(text_features, ("text", "height"))
                 output["TEXT"] = texts_gdf
             
             # for label, gdf in output.items():

@@ -624,7 +624,25 @@ class Dfs0:
         output_items = self._validate_item_count(dataset, items)
         dataframe = dataset.to_dataframe(unit_in_name=False, round_time=False)
         rebuilt = mikeio.from_pandas(dataframe, items=output_items)
-        rebuilt.to_dfs(target, title=source.stem if title is None else title, **kwargs)
+
+        handle, temp_name = tempfile.mkstemp(
+            prefix=f".{target.stem}_",
+            suffix=".dfs0",
+            dir=target.parent,
+        )
+        os.close(handle)
+        temp_target = Path(temp_name)
+        temp_target.unlink(missing_ok=True)
+
+        try:
+            rebuilt.to_dfs(
+                temp_target,
+                title=source.stem if title is None else title,
+                **kwargs,
+            )
+            temp_target.replace(target)
+        finally:
+            temp_target.unlink(missing_ok=True)
         return target
 
     def convert_to_nonequidistant(

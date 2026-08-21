@@ -34,6 +34,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import os
+import tempfile
 from typing import Iterable
 
 import pandas as pd
@@ -165,8 +166,11 @@ def _blank_to_none(value):
     """Convert empty spreadsheet-style values to ``None``."""
     if value is None:
         return None
-    if isinstance(value, float) and pd.isna(value):
-        return None
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
     text = str(value).strip()
     return None if text == "" else text
 
@@ -326,14 +330,19 @@ def iter_jobs(
         Optional subset of job IDs to keep.
     """
     config_dir = _config_dir(config_path)
+    seen_job_ids: set[str] = set()
 
-    for _, row in jobs_df.iterrows():
+    for row_index, row in jobs_df.iterrows():
         if not _truthy(row["enabled"]):
             continue
 
-        job_id = str(row["job_id"]).strip()
-        if not job_id:
-            continue
+        raw_job_id = _blank_to_none(row["job_id"])
+        if raw_job_id is None:
+            raise ValueError(f"Enabled job row {row_index!r} is missing job_id.")
+        job_id = str(raw_job_id).strip()
+        if job_id in seen_job_ids:
+            raise ValueError(f"Duplicate enabled job_id: {job_id!r}")
+        seen_job_ids.add(job_id)
         if job_filter and job_id not in job_filter:
             continue
 
@@ -345,11 +354,15 @@ def iter_jobs(
         if output_path is None:
             output_path = os.path.splitext(csv_path)[0] + ".dfs0"
 
+        time_column = _blank_to_none(row["time_column"])
+        if time_column is None:
+            raise ValueError(f"Job '{job_id}' is missing time_column.")
+
         yield Job(
             job_id=job_id,
             csv_path=csv_path,
             output_path=output_path,
-            time_column=str(row["time_column"]).strip(),
+            time_column=str(time_column).strip(),
             delimiter=_blank_to_none(row["delimiter"]) or ",",
             decimal=_blank_to_none(row["decimal"]) or ".",
             encoding=_blank_to_none(row["encoding"]),
@@ -555,7 +568,16 @@ def build_dataset_for_job(job: Job, items_df: pd.DataFrame):
                 f"Duplicate target item name '{item_name}' in Items sheet for job '{job.job_id}'."
             )
 
-        series = pd.to_numeric(df[csv_column], errors="coerce")
+        source_series = df[csv_column]
+        series = pd.to_numeric(source_series, errors="coerce")
+        invalid_numeric = source_series.notna() & series.isna()
+        if invalid_numeric.any():
+            examples = source_series.loc[invalid_numeric].head(5).tolist()
+            raise ValueError(
+                f"Job '{job.job_id}' contains "
+                f"{int(invalid_numeric.sum())} non-numeric value(s) in "
+                f"CSV column '{csv_column}'. First examples: {examples}"
+            )
         scale_factor = _to_float(row["scale_factor"], 1.0)
         offset = _to_float(row["offset"], 0.0)
         series = series * scale_factor + offset
@@ -584,7 +606,12 @@ def build_dataset_for_job(job: Job, items_df: pd.DataFrame):
     return dataset, data
 
 
-def write_job(job: Job, items_df: pd.DataFrame, dry_run: bool = False):
+def write_job(
+    job: Job,
+    items_df: pd.DataFrame,
+    dry_run: bool = False,
+    overwrite: bool = False,
+):
     """Build and optionally write a DFS0 file for one job.
 
     Parameters
@@ -595,19 +622,41 @@ def write_job(job: Job, items_df: pd.DataFrame, dry_run: bool = False):
         Cleaned Items sheet.
     dry_run : bool, default False
         If ``True``, validate everything without writing the DFS0 file.
+    overwrite : bool, default False
+        Allow an existing output DFS0 file to be replaced. The replacement is
+        written to a temporary file first.
 
     Returns
     -------
     tuple[mikeio.Dataset, pandas.DataFrame]
         The built dataset and source DataFrame.
     """
+    if not dry_run and os.path.exists(job.output_path) and not overwrite:
+        raise FileExistsError(
+            f"Output DFS0 already exists: {job.output_path}. "
+            "Pass overwrite=True to replace it."
+        )
+
     dataset, data = build_dataset_for_job(job, items_df)
 
     if not dry_run:
         output_dir = os.path.dirname(job.output_path)
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
-        dataset.to_dfs(job.output_path)
+
+        handle, temp_path = tempfile.mkstemp(
+            prefix=f".{os.path.splitext(os.path.basename(job.output_path))[0]}_",
+            suffix=".dfs0",
+            dir=output_dir or ".",
+        )
+        os.close(handle)
+        os.remove(temp_path)
+        try:
+            dataset.to_dfs(temp_path)
+            os.replace(temp_path, job.output_path)
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
     return dataset, data
 
@@ -617,6 +666,7 @@ def run(
     selected_jobs: set[str] | None = None,
     dry_run: bool = False,
     verbose: bool = True,
+    overwrite: bool = False,
 ) -> int:
     """Run all enabled jobs from an Excel workbook.
 
@@ -630,6 +680,8 @@ def run(
         Validate parsing and dataset creation without writing DFS0 files.
     verbose : bool, default True
         Print one block of progress information per job.
+    overwrite : bool, default False
+        Allow existing DFS0 outputs to be replaced atomically.
 
     Returns
     -------
@@ -650,7 +702,12 @@ def run(
 
     completed = 0
     for job in jobs:
-        _, data = write_job(job, items_df, dry_run=dry_run)
+        _, data = write_job(
+            job,
+            items_df,
+            dry_run=dry_run,
+            overwrite=overwrite,
+        )
 
         if verbose:
             print(f"[OK] {job.job_id}")
@@ -670,14 +727,22 @@ def run(
     return completed
 
 
-def run_one(config_path: str, job_id: str, dry_run: bool = False, verbose: bool = True) -> int:
+def run_one(
+    config_path: str,
+    job_id: str,
+    dry_run: bool = False,
+    verbose: bool = True,
+    overwrite: bool = False,
+) -> int:
     """Run a single job by ID.
 
     This is a small notebook-friendly convenience wrapper around :func:`run`.
+    Set ``overwrite=True`` to replace an existing output atomically.
     """
     return run(
         config_path=config_path,
         selected_jobs={job_id},
         dry_run=dry_run,
         verbose=verbose,
+        overwrite=overwrite,
     )

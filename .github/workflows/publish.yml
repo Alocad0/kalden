@@ -21,7 +21,10 @@ jobs:
           python-version: "3.12"
 
       - name: Install build tools
-        run: python -m pip install --upgrade pip build
+        run: python -m pip install --upgrade pip build ".[dev]"
+
+      - name: Run tests
+        run: python -m pytest
 
       - name: Build package
         run: python -m build

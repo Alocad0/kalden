@@ -651,6 +651,8 @@ def res1d_summary_export_widget(
                 state["last_export_path"] = output_path
                 state["last_layer_name"] = layer_name
                 state["last_output_column"] = output_column
+                widget.last_export_path = output_path
+                widget.last_layer_name = layer_name
                 
                 print(f"Exported: {output_path}")
                 print(f"Layer: {layer_name}")
@@ -682,6 +684,7 @@ def res1d_summary_export_widget(
     widget.object_type_dropdown = object_type_dropdown
     widget.last_export_path = None
     widget.last_layer_name = None
+    widget.export_state = state
     
     return widget
 

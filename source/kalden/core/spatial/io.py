@@ -2,6 +2,8 @@ import os
 import fiona
 import geopandas as gpd
 import sqlite3
+import shutil
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Union
@@ -94,31 +96,25 @@ def export_gdf(gdf, export_path, layer_name=None, export_file_type="gpkg", overw
           return False
       return layer_name in fiona.listlayers(gpkg_path)
 
-  def delete_gpkg_layer(gpkg_path, layer_name):
-      """
-      Delete a specific layer from a GeoPackage.
+  def replace_gpkg_layer(gpkg_path, layer_name):
+      """Replace one layer on a temporary copy, then swap it into place."""
+      gpkg_path = Path(gpkg_path)
+      handle, temp_name = tempfile.mkstemp(
+          prefix=f".{gpkg_path.stem}_",
+          suffix=".gpkg",
+          dir=gpkg_path.parent,
+      )
+      os.close(handle)
+      temp_path = Path(temp_name)
+      temp_path.unlink(missing_ok=True)
 
-      Note:
-          This follows the same approach as your original method.
-          For more complete GeoPackage layer management, GDAL/OGR-based
-          deletion can be more robust.
-      """
-      if not os.path.exists(gpkg_path):
-          return False
-
-      if layer_name not in fiona.listlayers(gpkg_path):
-          return False
-
-      import sqlite3
-      con = sqlite3.connect(gpkg_path)
       try:
-          con.execute(f'DROP TABLE IF EXISTS "{layer_name}"')
-          con.commit()
+          shutil.copy2(gpkg_path, temp_path)
+          fiona.remove(temp_path, layer=layer_name, driver="GPKG")
+          gdf.to_file(temp_path, layer=layer_name, mode="w", driver="GPKG")
+          temp_path.replace(gpkg_path)
       finally:
-          con.close()
-
-      print(f"Deleted layer: {layer_name}")
-      return True
+          temp_path.unlink(missing_ok=True)
 
   def delete_shapefile(shp_path):
       """
@@ -171,9 +167,9 @@ def export_gdf(gdf, export_path, layer_name=None, export_file_type="gpkg", overw
                   return False
 
               if layer_already_exists and overwrite:
-                  delete_gpkg_layer(export_path, layer_name)
-
-              gdf.to_file(export_path, layer=layer_name, mode="w", driver="GPKG")
+                  replace_gpkg_layer(export_path, layer_name)
+              else:
+                  gdf.to_file(export_path, layer=layer_name, mode="w", driver="GPKG")
 
           print(f"✓ Exported: {export_path} - {layer_name}")
           return True
@@ -308,6 +304,12 @@ def insert_qml_style_into_gpkg(
 
         if style_name is None:
             style_name = Path(qml_filename).stem
+
+    gpkg_path = Path(gpkg_path)
+    if not gpkg_path.is_file():
+        raise FileNotFoundError(f"GeoPackage not found: {gpkg_path}")
+    if gpkg_path.suffix.lower() != ".gpkg":
+        raise ValueError(f"Expected a .gpkg file, got: {gpkg_path}")
 
     con = sqlite3.connect(gpkg_path)
     cur = con.cursor()

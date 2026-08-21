@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import sqlite3
 import shutil
+import math
 from os import PathLike
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -145,7 +146,7 @@ class MPlusModel:
 
     @staticmethod
     def _require_projected_crs(gdf: gpd.GeoDataFrame, purpose: str) -> None:
-        """Require a projected CRS before calculating area or length."""
+        """Require a projected metre-based CRS for metric calculations."""
         if gdf.crs is None:
             raise ValueError(
                 f"The GeoDataFrame CRS must be set before calculating {purpose}."
@@ -154,6 +155,24 @@ class MPlusModel:
         if gdf.crs.is_geographic:
             raise ValueError(
                 f"A projected CRS is required for {purpose}; received {gdf.crs}."
+            )
+
+        axis_info = getattr(gdf.crs, "axis_info", ())
+        non_metric_axes = []
+        for axis in axis_info[:2]:
+            factor = getattr(axis, "unit_conversion_factor", None)
+            if factor is not None and not math.isclose(
+                float(factor),
+                1.0,
+                rel_tol=0.0,
+                abs_tol=1e-12,
+            ):
+                non_metric_axes.append(getattr(axis, "unit_name", "unknown"))
+
+        if non_metric_axes:
+            raise ValueError(
+                f"A metre-based CRS is required for {purpose}; received "
+                f"coordinate unit(s): {sorted(set(non_metric_axes))}."
             )
 
     def list_tables(

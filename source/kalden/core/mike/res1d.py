@@ -105,6 +105,7 @@ DEFAULT_FULL_LOAD_MAX_BYTES = 1_000_000_000
 _WINDOWS_MAX_PATH = 260
 
 _CACHE_SCHEMA_VERSION = "v3"
+_CACHE_MANIFEST_FILENAME = ".kalden-cache.json"
 
 _LOAD_MODE_ALIASES = {
     "auto": "auto",
@@ -842,12 +843,12 @@ def add_reach_hydraulics_from_strickler(
     joined_gdf = gdf.copy()
 
     # Read and cast input columns to numeric series.
-    diameter = joined_gdf[diameter_col].astype(float)
-    filling = joined_gdf[filling_col].astype(float)
-    strickler = joined_gdf[k_col].astype(float)
+    diameter = pd.to_numeric(joined_gdf[diameter_col], errors="coerce")
+    filling = pd.to_numeric(joined_gdf[filling_col], errors="coerce")
+    strickler = pd.to_numeric(joined_gdf[k_col], errors="coerce")
 
     # Input slope is expected in percent and converted to m/m.
-    slope = joined_gdf[slope_col].astype(float) / 100.0
+    slope = pd.to_numeric(joined_gdf[slope_col], errors="coerce") / 100.0
 
     # Convert filling ratio h/D to water depth.
     water_depth = filling * diameter
@@ -1014,6 +1015,9 @@ class Res1D:
         self.reaches_stem = self.cache_dir / "reaches"
         self.weirs_stem = self.cache_dir / "weirs"
         self.pumps_stem = self.cache_dir / "pumps"
+        self.catchments_stem = self.cache_dir / "catchments"
+        self.valves_stem = self.cache_dir / "valves"
+        self.orifices_stem = self.cache_dir / "orifices"
 
     @property
     def res1d_path(self) -> Path:
@@ -1027,11 +1031,14 @@ class Res1D:
 
     @property
     def effective_load_mode(self) -> str:
-        """
-        Filtered loading is currently disabled because mikeio1d
-        ultimately loads the complete ResultData.
-        """
-        return "full"
+        """Return the actual loading strategy for this result file."""
+        if self.load_mode == "auto":
+            return (
+                "full"
+                if self.file_size_bytes <= self.full_load_max_bytes
+                else "filtered"
+            )
+        return self.load_mode
 
     def with_crs(self, crs: str | int | None) -> "Res1D":
         """Set the CRS metadata and return ``self`` for fluent use."""
@@ -1056,16 +1063,6 @@ class Res1D:
             if not self.path.is_file():
                 raise FileNotFoundError(
                     f"res1d file not found: {self.path}"
-                )
-    
-            if self.load_mode != "full":
-                warnings.warn(
-                    "Filtered loading mode is currently deactivated because "
-                    "mikeio1d does not provide true lazy loading. "
-                    f"The file is effectively loaded into memory "
-                    f"({self.file_size_bytes / 1e6:.0f} MB).",
-                    RuntimeWarning,
-                    stacklevel=2,
                 )
     
             import mikeio1d
@@ -1155,6 +1152,86 @@ class Res1D:
             / _safe_cache_token(ref.object_id, max_length=24)
         )
 
+    @property
+    def _cache_manifest_path(self) -> Path:
+        return self.cache_dir / _CACHE_MANIFEST_FILENAME
+
+    def _cache_manifest(self) -> dict[str, object]:
+        stat = self.path.stat()
+        return {
+            "schema": _CACHE_SCHEMA_VERSION,
+            "source_path": str(self.path.resolve()),
+            "source_size": stat.st_size,
+            "source_mtime_ns": stat.st_mtime_ns,
+        }
+
+    def _read_cache_manifest(self) -> dict[str, object] | None:
+        try:
+            return json.loads(self._cache_manifest_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, OSError, ValueError, TypeError):
+            return None
+
+    def _cache_matches_source(self) -> bool:
+        if not self.cache:
+            return False
+        try:
+            return self._read_cache_manifest() == self._cache_manifest()
+        except (FileNotFoundError, OSError):
+            return False
+
+    def _cache_dir_is_owned(self) -> bool:
+        cache_dir = self.cache_dir.resolve()
+        default_dir = default_cache_dir(self.path).resolve()
+        if cache_dir == default_dir:
+            return True
+
+        manifest = self._read_cache_manifest()
+        if manifest is None:
+            return False
+
+        try:
+            manifest_source = Path(str(manifest["source_path"])).resolve()
+        except (KeyError, TypeError, OSError):
+            return False
+        return manifest_source == self.path.resolve()
+
+    def _remove_cache_dir(self) -> None:
+        if not self.cache_dir.exists():
+            return
+        if not self._cache_dir_is_owned():
+            raise ValueError(
+                "Refusing to remove a cache directory that is not marked as "
+                f"owned by this Res1D instance: {self.cache_dir}"
+            )
+        shutil.rmtree(self.cache_dir)
+
+    def _prepare_cache_for_write(self) -> None:
+        if not self.cache:
+            return
+
+        expected = self._cache_manifest()
+        current = self._read_cache_manifest()
+        if self.cache_dir.exists() and current != expected:
+            if any(self.cache_dir.iterdir()):
+                self._remove_cache_dir()
+
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        manifest_temp = self._cache_manifest_path.with_suffix(".tmp")
+        manifest_temp.write_text(
+            json.dumps(expected, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+        manifest_temp.replace(self._cache_manifest_path)
+
+    @staticmethod
+    def _remove_other_cache_candidates(
+        candidates: Sequence[tuple[str, Path]],
+        selected_path: Path,
+    ) -> None:
+        for _format, candidate in candidates:
+            if candidate != selected_path:
+                candidate.unlink(missing_ok=True)
+
     @staticmethod
     def _cache_candidates(stem: Path) -> list[tuple[str, Path]]:
         return [
@@ -1181,7 +1258,7 @@ class Res1D:
             )
 
     def _read_dataframe_cache(self, stem: Path) -> pd.DataFrame | None:
-        if not self.cache:
+        if not self._cache_matches_source():
             return None
 
         for fmt, file_path in self._cache_candidates(stem):
@@ -1208,6 +1285,8 @@ class Res1D:
         if not self.cache:
             return None
 
+        self._prepare_cache_for_write()
+
         # Check the longest cache candidate before creating/writing anything.
         for _fmt, file_path in self._cache_candidates(stem):
             self._check_windows_path_length(file_path)
@@ -1218,6 +1297,10 @@ class Res1D:
         parquet_path = stem.with_suffix(".parquet")
         try:
             frame.to_parquet(parquet_path)
+            self._remove_other_cache_candidates(
+                self._cache_candidates(stem),
+                parquet_path,
+            )
             return parquet_path
         except Exception as exc:
             errors.append(f"parquet: {exc}")
@@ -1225,6 +1308,10 @@ class Res1D:
         pickle_path = stem.with_suffix(".pkl")
         try:
             frame.to_pickle(pickle_path)
+            self._remove_other_cache_candidates(
+                self._cache_candidates(stem),
+                pickle_path,
+            )
             return pickle_path
         except Exception as exc:
             errors.append(f"pickle: {exc}")
@@ -1232,6 +1319,10 @@ class Res1D:
         csv_path = stem.with_suffix(".csv")
         try:
             frame.to_csv(csv_path)
+            self._remove_other_cache_candidates(
+                self._cache_candidates(stem),
+                csv_path,
+            )
             return csv_path
         except Exception as exc:
             errors.append(f"csv: {exc}")
@@ -1317,26 +1408,22 @@ class Res1D:
             yield ref.object_id, item
     
     def _source_object_ref(self, ref: SeriesRef) -> ObjectRef:
-        index = self.object_index()
-
-        matches = index.loc[
-            (index["object_type"] == ref.object_type)
-            & (index["object_id"].astype(str) == ref.object_id)
-        ]
-
-        if matches.empty:
-            raise KeyError(
-                f"{ref.object_type} object not found: "
-                f"{ref.object_id!r}"
+        if ref.object_type in {"node", "reach", "catchment"}:
+            return ObjectRef(
+                object_type=ref.object_type,
+                object_id=ref.object_id,
+                source_object_type=ref.object_type,
+                source_object_id=ref.object_id,
             )
 
-        row = matches.iloc[0]
-
+        prefix = _canonical_special_prefix(ref.object_type)
+        if prefix is None:
+            raise ValueError(f"Unsupported object type: {ref.object_type!r}")
         return ObjectRef(
-            object_type=str(row["object_type"]),
-            object_id=str(row["object_id"]),
-            source_object_type=str(row["source_object_type"]),
-            source_object_id=str(row["source_object_id"]),
+            object_type=ref.object_type,
+            object_id=ref.object_id,
+            source_object_type="reach",
+            source_object_id=f"{prefix}:{ref.object_id}",
         )
 
     def _lookup_object(self, object_type: str, object_id: str) -> Any:
@@ -1432,7 +1519,15 @@ class Res1D:
                     }
                 )
 
-        index = pd.DataFrame(rows).drop_duplicates()
+        index = pd.DataFrame(
+            rows,
+            columns=[
+                "object_type",
+                "object_id",
+                "source_object_type",
+                "source_object_id",
+            ],
+        ).drop_duplicates()
         if not index.empty:
             index = index.sort_values(["object_type", "object_id"]).reset_index(
                 drop=True
@@ -1483,7 +1578,16 @@ class Res1D:
                         }
                     )
 
-        index = pd.DataFrame(rows).drop_duplicates()
+        index = pd.DataFrame(
+            rows,
+            columns=[
+                "object_type",
+                "object_id",
+                "quantity",
+                "source_object_type",
+                "source_object_id",
+            ],
+        ).drop_duplicates()
         if not index.empty:
             index = index.sort_values(
                 ["object_type", "object_id", "quantity"]
@@ -1758,16 +1862,6 @@ class Res1D:
             filter_argument: [source_ref.source_object_id],
         }
 
-        # Apply the quantity filter only when this is a native result
-        # quantity. Derived quantities may require several native inputs.
-        native_quantities = set(
-            str(quantity)
-            for quantity in getattr(self.res, "quantities", [])
-        )
-
-        if ref.quantity in native_quantities:
-            open_kwargs["quantities"] = [ref.quantity]
-
         import mikeio1d
 
         filtered_res = mikeio1d.open(
@@ -1933,6 +2027,12 @@ class Res1D:
                     warnings.warn(message, stacklevel=2)
                 continue
 
+            if frame.shape[1] > 1 and chainage.strip().lower() == "all":
+                raise ValueError(
+                    "Cannot compute a total from multi-chainage results with "
+                    "chainage='all'. Choose inlet, outlet, or center explicitly."
+                )
+
             base_column = (
                 str(ref.object_id)
                 if use_object_id_as_column
@@ -2080,15 +2180,16 @@ class Res1D:
         """Return the spatial cache stem for one public object type."""
 
         normalized = _normalize_object_type(object_type)
-        if normalized == "node":
-            return self.nodes_stem
-        if normalized == "reach":
-            return self.reaches_stem
-        if normalized == "weir":
-            return self.weirs_stem
-        if normalized == "pump":
-            return self.pumps_stem
-        raise ValueError(f"Unsupported spatial object_type: {object_type!r}")
+        stems = {
+            "node": self.nodes_stem,
+            "reach": self.reaches_stem,
+            "catchment": self.catchments_stem,
+            "weir": self.weirs_stem,
+            "pump": self.pumps_stem,
+            "valve": self.valves_stem,
+            "orifice": self.orifices_stem,
+        }
+        return stems[normalized]
 
     def _read_spatial_cache(self, stem: PathLike) -> Any | None:
         """Read a cached GeoDataFrame from ``stem`` if available.
@@ -2098,7 +2199,7 @@ class Res1D:
         :meth:`nodes_gdf`, and :meth:`reaches_gdf` in new code.
         """
 
-        if not self.cache:
+        if not self._cache_matches_source():
             return None
 
         gpd, _line_string, _point = _require_spatial_dependencies()
@@ -2125,6 +2226,8 @@ class Res1D:
         if not self.cache:
             return None
 
+        self._prepare_cache_for_write()
+
         stem_path = Path(stem).expanduser()
         stem_path.parent.mkdir(parents=True, exist_ok=True)
         errors: list[str] = []
@@ -2132,6 +2235,10 @@ class Res1D:
         parquet_path = stem_path.with_suffix(".parquet")
         try:
             gdf.to_parquet(parquet_path)
+            self._remove_other_cache_candidates(
+                self._spatial_candidates(stem_path),
+                parquet_path,
+            )
             return parquet_path
         except Exception as exc:
             errors.append(f"parquet: {exc}")
@@ -2139,6 +2246,10 @@ class Res1D:
         gpkg_path = stem_path.with_suffix(".gpkg")
         try:
             gdf.to_file(gpkg_path, driver="GPKG")
+            self._remove_other_cache_candidates(
+                self._spatial_candidates(stem_path),
+                gpkg_path,
+            )
             return gpkg_path
         except Exception as exc:
             errors.append(f"gpkg: {exc}")
@@ -2146,6 +2257,10 @@ class Res1D:
         geojson_path = stem_path.with_suffix(".geojson")
         try:
             gdf.to_file(geojson_path, driver="GeoJSON")
+            self._remove_other_cache_candidates(
+                self._spatial_candidates(stem_path),
+                geojson_path,
+            )
             return geojson_path
         except Exception as exc:
             errors.append(f"geojson: {exc}")
@@ -2233,6 +2348,11 @@ class Res1D:
         geometry = _safe_getattr(reach, ["geometry", "Geometry"])
         if geometry is None:
             return None
+        if getattr(geometry, "geom_type", None) in {
+            "LineString",
+            "MultiLineString",
+        }:
+            return geometry
 
         points = _safe_getattr(geometry, ["points", "Points"], [])
         coordinates: list[tuple[float, float]] = []
@@ -2247,6 +2367,25 @@ class Res1D:
         if len(coordinates) < 2:
             return None
         return LineString(coordinates)
+
+    def _catchment_geometry(self, catchment: Any) -> Any | None:
+        """Return a Shapely catchment geometry when boundary points exist."""
+        from shapely.geometry import Polygon
+
+        geometry = _safe_getattr(catchment, ["geometry", "Geometry"])
+        if geometry is None:
+            return None
+        if getattr(geometry, "geom_type", None) is not None:
+            return geometry
+
+        points = _safe_getattr(geometry, ["points", "Points"], [])
+        coordinates: list[tuple[float, float]] = []
+        for point in points:
+            x = _as_float_or_none(_safe_getattr(point, ["x", "X", "xcoord"]))
+            y = _as_float_or_none(_safe_getattr(point, ["y", "Y", "ycoord"]))
+            if x is not None and y is not None:
+                coordinates.append((x, y))
+        return Polygon(coordinates) if len(coordinates) >= 3 else None
 
     def _build_spatial_rows(
         self,
@@ -2276,11 +2415,12 @@ class Res1D:
     
         for ref, item in iterator:
             quantities = _public_readable_quantities(item)
-            geometry = (
-                self._node_geometry(item)
-                if normalized == "node"
-                else self._reach_geometry(item)
-            )
+            if normalized == "node":
+                geometry = self._node_geometry(item)
+            elif normalized == "catchment":
+                geometry = self._catchment_geometry(item)
+            else:
+                geometry = self._reach_geometry(item)
     
             rows.append(
                 {
@@ -2326,9 +2466,22 @@ class Res1D:
         gpd, _line_string, _point = _require_spatial_dependencies()
 
         built: dict[str, Any] = {}
+        spatial_columns = [
+            "object_type",
+            "object_id",
+            "source_object_type",
+            "source_object_id",
+            "quantities",
+            "geometry",
+        ]
         for object_type in DEFAULT_OBJECT_TYPES:
             rows = self._build_spatial_rows(object_type)
-            gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs=self.crs)
+            gdf = gpd.GeoDataFrame(
+                rows,
+                columns=spatial_columns,
+                geometry="geometry",
+                crs=self.crs,
+            )
             built[object_type] = gdf
             self._write_spatial_cache(gdf, self._spatial_cache_stem(object_type))
 
@@ -2353,8 +2506,8 @@ class Res1D:
             cached = self._read_spatial_cache(stem)
     
             if cached is not None:
-                if self.crs is not None and cached.crs is None:
-                    cached = cached.set_crs(self.crs)
+                if self.crs is not None:
+                    cached = cached.set_crs(self.crs, allow_override=True)
                 if show_progress:
                     print(f"Loaded cached {normalized} spatial index.")
                 return cached
@@ -2371,6 +2524,14 @@ class Res1D:
     
         gdf = gpd.GeoDataFrame(
             rows,
+            columns=[
+                "object_type",
+                "object_id",
+                "source_object_type",
+                "source_object_id",
+                "quantities",
+                "geometry",
+            ],
             geometry="geometry",
             crs=self.crs,
         )
@@ -2503,7 +2664,7 @@ class Res1D:
 
         gdf[value_column] = gdf["object_id"].astype(str).map(values)
         if drop_empty_geometry and "geometry" in gdf:
-            gdf = gdf[gdf.geometry.notna()].copy()
+            gdf = gdf[gdf.geometry.notna() & ~gdf.geometry.is_empty].copy()
         return gdf
 
     def summary_export_widget(
@@ -2756,8 +2917,7 @@ class Res1D:
 
         if include_memory:
             self._memory_cache.clear()
-        if self.cache_dir.exists():
-            shutil.rmtree(self.cache_dir)
+        self._remove_cache_dir()
 
     def cache_size(self) -> int:
         """Return total cache size in bytes."""
