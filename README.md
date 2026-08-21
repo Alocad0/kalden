@@ -1,6 +1,8 @@
 # kalden
 
-`kalden` is a small Python utilities package that provides helpers for filesystem operations, data handling, and MIKE/Geo workflows.
+`kalden` is a small Python utilities package that provides helpers for
+filesystem operations, data handling, MIKE/Geo workflows, and Simstrat model
+I/O.
 
 ## Features
 
@@ -9,6 +11,7 @@
 - Data science helpers for pandas workflows and time series processing
 - Geospatial helpers for reading/writing spatial files and styling QGIS layers
 - MIKE-specific utilities for `dfs0` and `res1d` workflows
+- Strict readers for physical Simstrat and Simstrat-SELMA model setups
 
 ## Installation
 
@@ -44,6 +47,16 @@ temp_dir = create_temp_dir()
 print(f"Temporary directory created at: {temp_dir}")
 ```
 
+Read a Simstrat model setup and its tabular data with:
+
+```python
+from kalden.core.simstrat import SimstratConfig
+
+model = SimstratConfig("path/to/model.par")
+inputs = model.load_inputs()
+outputs = model.load_outputs(sep=",")
+```
+
 ## Project Structure
 
 - `source/kalden/`
@@ -51,6 +64,7 @@ print(f"Temporary directory created at: {temp_dir}")
   - `core/datascience/` — pandas and generic data helpers
   - `core/spatial/` — geospatial IO and QGIS style helpers
   - `core/mike/` — MIKE format and time series conversion utilities
+  - `core/simstrat/` — Simstrat and Simstrat-SELMA setup and table readers
   - `misc/` — plotting utilities
   - `styles/` — bundled QML styles
   - `templates/` — package templates
