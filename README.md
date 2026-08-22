@@ -47,15 +47,21 @@ temp_dir = create_temp_dir()
 print(f"Temporary directory created at: {temp_dir}")
 ```
 
-Read a Simstrat model setup and its tabular data with:
+Read a Simstrat model setup and its tabular data with timestamped standard
+logging enabled:
 
 ```python
-from kalden.core.simstrat import SimstratConfig
+from kalden.core.simstrat import SimstratConfig, configure_simstrat_logging
 
+configure_simstrat_logging()  # INFO by default; call once per process/notebook.
 model = SimstratConfig("path/to/model.par")
 inputs = model.load_inputs()
 outputs = model.load_outputs(sep=",")
 ```
+
+The logger hierarchy starts at `kalden.core.simstrat`. Applications that already
+configure Python logging should configure that logger or the root logger instead
+of calling `configure_simstrat_logging()`.
 
 Generate and atomically replace a live Simstrat inflow file without forcing
 all values to two decimals:

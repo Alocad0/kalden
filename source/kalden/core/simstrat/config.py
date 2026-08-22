@@ -12,10 +12,11 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta
 import json
+import logging
 import math
 from pathlib import Path
 import re
-from typing import Any, Literal
+from typing import Any, Literal, TextIO
 import warnings
 
 import numpy as np
@@ -26,16 +27,68 @@ from kalden.core.io import detect_file_encoding, file_has_content
 
 PathLike = str | Path
 ErrorMode = Literal["raise", "warn", "ignore"]
+SIMSTRAT_LOGGER_NAME = "kalden.core.simstrat"
+_CONSOLE_HANDLER_NAME = "kalden.simstrat.console"
+
+_library_logger = logging.getLogger(SIMSTRAT_LOGGER_NAME)
+if not any(
+    isinstance(handler, logging.NullHandler)
+    for handler in _library_logger.handlers
+):
+    _library_logger.addHandler(logging.NullHandler())
+
+logger = logging.getLogger(__name__)
 
 __all__ = [
     "SimstratConfig",
     "SimstratConfigError",
     "SimstratReadError",
     "compute_sim_dates",
+    "configure_simstrat_logging",
     "get_file_path_from_setup",
     "get_simstrat_model_setups",
     "read_simstrat_model_setup",
 ]
+
+
+def configure_simstrat_logging(
+    level: int | str = logging.INFO,
+    *,
+    stream: TextIO | None = None,
+    propagate: bool = False,
+) -> logging.Logger:
+    """Enable timestamped console logging for the Simstrat logger hierarchy.
+
+    Applications with an existing logging configuration do not need this
+    helper. It is primarily a convenience for scripts and notebooks and is
+    idempotent: repeated calls update the same console handler.
+    """
+    package_logger = logging.getLogger(SIMSTRAT_LOGGER_NAME)
+    handler = next(
+        (
+            candidate
+            for candidate in package_logger.handlers
+            if candidate.get_name() == _CONSOLE_HANDLER_NAME
+        ),
+        None,
+    )
+    if handler is None:
+        handler = logging.StreamHandler(stream)
+        handler.set_name(_CONSOLE_HANDLER_NAME)
+        package_logger.addHandler(handler)
+    elif stream is not None and isinstance(handler, logging.StreamHandler):
+        handler.setStream(stream)
+
+    handler.setLevel(level)
+    handler.setFormatter(
+        logging.Formatter(
+            "[%(asctime)s] [%(levelname)s] %(name)s: %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+    )
+    package_logger.setLevel(level)
+    package_logger.propagate = propagate
+    return package_logger
 
 
 class SimstratConfigError(ValueError):
@@ -85,8 +138,9 @@ class SimstratConfig:
     par_file:
         Path to the JSON-formatted Simstrat ``.par`` setup.
     notebook_mode:
-        Accepted for compatibility with the former notebook utility. It has no
-        effect because this core reader does not print notebook log messages.
+        Accepted for compatibility with the former notebook utility. Standard
+        logging is controlled by the application or
+        :func:`configure_simstrat_logging`, not by this flag.
     """
 
     input_file_exceptions: set[str] = {"SetFABMDiagnosticVars.dat"}
@@ -118,6 +172,8 @@ class SimstratConfig:
         self.root_path = par_path.parent
         self.root = str(self.root_path)
         self.name = self.root_path.name
+        self.log = logging.getLogger(f"{__name__}.{self.name}")
+        self.log.info("Reading Simstrat model setup from %s", self.par_file)
 
         self.config: dict[str, Any] = {}
         self.inputs: dict[str, pd.DataFrame | str] = {}
@@ -136,12 +192,22 @@ class SimstratConfig:
         self.simulation_log: str | None = None
         self.execution_time: datetime | None = None
 
-        self.parse()
-        self.get_simulation_times()
-        self.result_path = self.resolve_config_path(("Output", "Path"))
-        self.result_dir = str(self.result_path)
-        self.load_log(required=False)
-        self.get_execution_date()
+        try:
+            self.parse()
+            self.get_simulation_times()
+            self.result_path = self.resolve_config_path(("Output", "Path"))
+            self.result_dir = str(self.result_path)
+            self.load_log(required=False)
+            self.get_execution_date()
+        except Exception as exc:
+            self.log.error("Could not initialize model setup: %s", exc)
+            raise
+
+        self.log.info(
+            "Initialized model setup for %s to %s",
+            self.start_date,
+            self.end_date,
+        )
 
     @staticmethod
     def read_simstrat_model_setup(config_path: PathLike) -> dict[str, Any]:
@@ -162,6 +228,7 @@ class SimstratConfig:
             raise SimstratConfigError(
                 f"Simstrat setup must contain a JSON object: {path}"
             )
+        logger.debug("Read Simstrat setup file %s", path)
         return config
 
     @staticmethod
@@ -198,7 +265,9 @@ class SimstratConfig:
             and path.suffix.casefold() == ".par"
             and not any(token in str(path).casefold() for token in excluded)
         ]
-        return [str(path) for path in sorted(paths, key=lambda p: str(p).casefold())]
+        result = [str(path) for path in sorted(paths, key=lambda p: str(p).casefold())]
+        logger.info("Found %d Simstrat setup file(s) below %s", len(result), root)
+        return result
 
     @classmethod
     def get_file_path_from_setup(
@@ -286,6 +355,12 @@ class SimstratConfig:
             raise SimstratConfigError(
                 "Input/Morphology datum must be a finite number when provided."
             )
+        self.log.debug(
+            "Parsed setup: reference year=%d, timestep=%g s, inflow mode=%r",
+            self.reference_year,
+            self.timestep_seconds,
+            self.inflow_mode,
+        )
 
     def get_simulation_times(self) -> pd.DatetimeIndex | None:
         """Compute or read the configured output time axis."""
@@ -307,16 +382,27 @@ class SimstratConfig:
                 end=self.end_date,
                 freq=frequency,
             )
+            self.log.info(
+                "Configured %d output timestamp(s) at %s intervals",
+                len(self.times),
+                frequency,
+            )
             return self.times
 
         if output_times is None or not str(output_times).strip():
             self.times = None
+            self.log.warning("No configured output time axis was found")
             return None
 
         path = self._resolve_path_value(self.root_path, output_times).resolve(
             strict=True
         )
         self.times = self._read_time_axis(path)
+        self.log.info(
+            "Read %d configured output timestamp(s) from %s",
+            len(self.times),
+            path,
+        )
         return self.times
 
     def _read_time_axis(self, path: Path) -> pd.DatetimeIndex:
@@ -623,8 +709,17 @@ class SimstratConfig:
         if self.morphology_datum is not None:
             self.altitudes_bathy = depths + self.morphology_datum
 
-    @staticmethod
+    def _warn(self, message: str, *, stacklevel: int = 2) -> None:
+        """Emit one logging record while preserving the warnings API."""
+        self.log.warning("%s", message)
+        warnings.warn(
+            message,
+            RuntimeWarning,
+            stacklevel=stacklevel + 1,
+        )
+
     def _handle_read_error(
+        self,
         name: str,
         path: Path,
         exc: Exception,
@@ -632,9 +727,12 @@ class SimstratConfig:
     ) -> None:
         message = f"Could not read {name!r} from {path}: {exc}"
         if errors == "raise":
+            self.log.error("%s", message)
             raise SimstratReadError(message) from exc
         if errors == "warn":
-            warnings.warn(message, RuntimeWarning, stacklevel=3)
+            self._warn(message, stacklevel=3)
+        else:
+            self.log.debug("Ignored read failure: %s", message)
 
     def load_inputs(
         self,
@@ -646,6 +744,7 @@ class SimstratConfig:
     ) -> dict[str, pd.DataFrame | str]:
         """Load physical and optional SELMA/FABM inputs."""
         errors = _validate_error_mode(errors)
+        self.log.info("Loading model setup inputs")
         self.inputs = {}
         self.inputs_paths = {}
         self.depths_bathy = None
@@ -660,6 +759,10 @@ class SimstratConfig:
                 continue
             candidates.append((str(key), path))
 
+        ignored_input_names = sorted(self.input_file_exceptions)
+        if ignored_input_names:
+            self.log.info("Ignoring configured input files: %s", ignored_input_names)
+
         model_config = self.config.get("ModelConfig", {})
         couple_fabm_value = (
             model_config.get("CoupleFABM", False)
@@ -669,26 +772,36 @@ class SimstratConfig:
         try:
             couple_fabm = parse_boolean(couple_fabm_value)
         except ValueError as exc:
-            raise SimstratConfigError(
-                "ModelConfig/CoupleFABM must be a boolean or 0/1."
-            ) from exc
+            message = "ModelConfig/CoupleFABM must be a boolean or 0/1."
+            self.log.error("%s", message)
+            raise SimstratConfigError(message) from exc
         if couple_fabm:
+            self.log.info("Loading coupled FABM/SELMA inputs")
             fabm_config = self.config.get("FABMConfig")
             if not isinstance(fabm_config, Mapping):
-                raise SimstratConfigError(
+                message = (
                     "ModelConfig/CoupleFABM is enabled but FABMConfig is missing."
                 )
+                self.log.error("%s", message)
+                raise SimstratConfigError(message)
             inflow_dir_value = fabm_config.get("FABMInflowPath")
             if inflow_dir_value is None:
                 inflow_dir_value = fabm_config.get("PathFABMinflow")
+            if inflow_dir_value is None:
+                message = (
+                    "CoupleFABM is enabled but FABMConfig/FABMInflowPath "
+                    "is missing."
+                )
+                self.log.error("%s", message)
+                raise SimstratConfigError(message)
             inflow_dir = self._resolve_path_value(
                 self.root_path,
                 inflow_dir_value,
             )
             if not inflow_dir.is_dir():
-                raise SimstratConfigError(
-                    f"FABM inflow directory does not exist: {inflow_dir}"
-                )
+                message = f"FABM inflow directory does not exist: {inflow_dir}"
+                self.log.error("%s", message)
+                raise SimstratConfigError(message)
             candidates.extend(
                 (f"fabm_{path.stem}", path)
                 for path in sorted(inflow_dir.iterdir(), key=lambda p: p.name.casefold())
@@ -718,6 +831,13 @@ class SimstratConfig:
                 self.inputs_paths[key] = str(path.resolve())
                 if key == "Morphology":
                     self._record_morphology(frame)
+                self.log.debug(
+                    "Loaded input %s from %s (%d row(s), %d column(s))",
+                    key,
+                    path,
+                    frame.shape[0],
+                    frame.shape[1],
+                )
             except Exception as exc:
                 self._handle_read_error(key, path, exc, errors)
 
@@ -727,14 +847,16 @@ class SimstratConfig:
                 if errors == "raise":
                     self.validate_inputs(raise_error=True)
                 if errors == "warn":
-                    warnings.warn(
+                    self._warn(
                         "Some Simstrat inputs do not cover the simulation period: "
                         + "; ".join(
                             f"{key}: {value}" for key, value in problems.items()
                         ),
-                        RuntimeWarning,
                         stacklevel=2,
                     )
+                if errors == "ignore":
+                    self.log.debug("Ignored input validation problems: %s", problems)
+        self.log.info("Loaded %d model input file(s)", len(self.inputs))
         return self.inputs
 
     def validate_inputs(
@@ -744,6 +866,7 @@ class SimstratConfig:
         raise_error: bool = True,
     ) -> dict[str, str]:
         """Validate timestamp order, uniqueness, and simulation coverage."""
+        self.log.info("Validating model inputs")
         selected = self.inputs if inputs is None else inputs
         problems: dict[str, str] = {}
 
@@ -772,8 +895,16 @@ class SimstratConfig:
             details = "\n".join(
                 f"- {name}: {issue}" for name, issue in problems.items()
             )
-            raise ValueError(
-                "Some Simstrat inputs are invalid or incomplete:\n" + details
+            message = "Some Simstrat inputs are invalid or incomplete:\n" + details
+            self.log.error("%s", message)
+            raise ValueError(message)
+        if problems:
+            self.log.debug("Input validation found problems: %s", problems)
+        else:
+            self.log.info(
+                "All model inputs cover the simulation period %s to %s",
+                self.start_date,
+                self.end_date,
             )
         return problems
 
@@ -897,10 +1028,11 @@ class SimstratConfig:
     ) -> dict[str, pd.DataFrame]:
         """Load model outputs without rounding or collapsing timestamps."""
         errors = _validate_error_mode(errors)
+        self.log.info("Loading model outputs from %s", self.result_path)
         if not self.result_path.is_dir():
-            raise FileNotFoundError(
-                f"Simstrat output directory not found: {self.result_path}"
-            )
+            message = f"Simstrat output directory not found: {self.result_path}"
+            self.log.error("%s", message)
+            raise FileNotFoundError(message)
 
         self.outputs = {}
         self.output_variables = None
@@ -908,6 +1040,11 @@ class SimstratConfig:
         self.depths_output = None
         self.altitudes_output = None
         self.depth_to_altitude_table = None
+        self.log.info(
+            "Ignoring output files %s and suffixes %s",
+            sorted(self.output_file_exceptions),
+            sorted(self.output_suffix_exceptions),
+        )
         for path in sorted(self.result_path.iterdir(), key=lambda p: p.name.casefold()):
             if (
                 not path.is_file()
@@ -915,17 +1052,27 @@ class SimstratConfig:
                 or path.suffix.casefold() in self.output_suffix_exceptions
                 or not file_has_content(path)
             ):
+                self.log.debug("Skipped output path %s", path)
                 continue
             try:
-                frame, _ = self._read_output_table(
+                frame, detected_sep = self._read_output_table(
                     path,
                     encoding=_normalized_encoding(path),
                     preferred_sep=sep,
                 )
                 frame = self._strip_column_names(frame)
 
+                if sep is not None and detected_sep != sep:
+                    self.log.warning(
+                        "%s: expected separator %r but read successfully with %r",
+                        path.name,
+                        sep,
+                        detected_sep,
+                    )
+
                 if path.name == "_variables.dat":
                     self.output_variables = frame
+                    self.log.debug("Loaded output variable metadata from %s", path)
                     continue
 
                 time_column = self._resolve_column(frame, date_col)
@@ -939,7 +1086,15 @@ class SimstratConfig:
                     from kalden.core.datascience.pandas import df_smart_resample
 
                     frame = df_smart_resample(frame, resample)
+                    self.log.debug("Resampled output %s to %s", path.stem, resample)
                 self.outputs[path.stem] = frame
+                self.log.debug(
+                    "Loaded output %s from %s (%d row(s), %d column(s))",
+                    path.stem,
+                    path,
+                    frame.shape[0],
+                    frame.shape[1],
+                )
             except Exception as exc:
                 self._handle_read_error(path.stem, path, exc, errors)
 
@@ -948,6 +1103,14 @@ class SimstratConfig:
         indexes = [frame.index for frame in self.outputs.values()]
         if indexes and all(index.equals(indexes[0]) for index in indexes[1:]):
             self.time = indexes[0]
+            self.log.debug(
+                "All model outputs share %d timestamp(s)",
+                len(self.time),
+            )
+        if self.outputs:
+            self.log.info("Loaded %d model output file(s)", len(self.outputs))
+        else:
+            self.log.warning("No model output files were loaded from %s", self.result_path)
         return self.outputs
 
     def load_all(
@@ -957,9 +1120,11 @@ class SimstratConfig:
         log_kwargs: Mapping[str, Any] | None = None,
     ) -> "SimstratConfig":
         """Load inputs, outputs, and the simulation log."""
+        self.log.info("Loading all model data")
         self.load_inputs(**dict(inputs_kwargs or {}))
         self.load_outputs(**dict(outputs_kwargs or {}))
         self.load_log(**dict(log_kwargs or {}))
+        self.log.info("Finished loading all model data")
         return self
 
     def load_log(
@@ -970,15 +1135,20 @@ class SimstratConfig:
     ) -> str | None:
         """Load the optional simulation log."""
         path = self.root_path / log_name
+        self.log.info("Loading simulation log from %s", path)
         if not path.is_file():
             self.simulation_log = None
             if required:
-                raise FileNotFoundError(f"Simulation log not found: {path}")
+                message = f"Simulation log not found: {path}"
+                self.log.error("%s", message)
+                raise FileNotFoundError(message)
+            self.log.debug("Optional simulation log was not found: %s", path)
             return None
         self.simulation_log = path.read_text(
             encoding=_normalized_encoding(path),
             errors="replace",
         )
+        self.log.info("Loaded simulation log from %s", path)
         return self.simulation_log
 
     def get_execution_date(self) -> datetime | None:
@@ -1003,6 +1173,15 @@ class SimstratConfig:
                 output_time = datetime.fromtimestamp(max(timestamps))
 
         self.execution_time = log_match or output_time
+        if self.execution_time is not None:
+            source = "simulation log" if log_match is not None else "output timestamps"
+            self.log.info(
+                "Inferred simulation execution time %s from %s",
+                self.execution_time,
+                source,
+            )
+        else:
+            self.log.warning("Could not infer the simulation execution time")
         return self.execution_time
 
     def describe(self, *, print_output: bool = True) -> str:

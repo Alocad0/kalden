@@ -1,5 +1,8 @@
+from io import StringIO
 import json
+import logging
 from pathlib import Path
+import re
 
 import pandas as pd
 import pytest
@@ -9,6 +12,7 @@ from kalden.core.simstrat import (
     SimstratConfigError,
     SimstratReadError,
     compute_sim_dates,
+    configure_simstrat_logging,
     get_file_path_from_setup,
     get_simstrat_model_setups,
     read_simstrat_model_setup,
@@ -145,6 +149,63 @@ def test_setup_parsing_time_math_and_discovery(tmp_path: Path) -> None:
     ) == pd.Timestamp("2024-01-02 12:00")
 
 
+def test_standard_logging_reports_reader_lifecycle(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    setup_path = _write_setup(tmp_path)
+    _write_output(setup_path)
+
+    with caplog.at_level(logging.DEBUG, logger="kalden.core.simstrat"):
+        model = SimstratConfig(setup_path)
+        model.load_inputs()
+        model.load_outputs(sep=",")
+
+    assert model.log.name == "kalden.core.simstrat.config.Lake"
+    messages = [record.getMessage() for record in caplog.records]
+    assert any("Reading Simstrat model setup" in message for message in messages)
+    assert "Loading model setup inputs" in messages
+    assert "Loaded 4 model input file(s)" in messages
+    assert any("Loaded input Forcing" in message for message in messages)
+    assert "Loaded 1 model output file(s)" in messages
+    assert {record.levelno for record in caplog.records} >= {
+        logging.INFO,
+        logging.DEBUG,
+    }
+
+
+def test_configure_simstrat_logging_is_formatted_and_idempotent() -> None:
+    stream = StringIO()
+    package_logger = configure_simstrat_logging(stream=stream)
+
+    try:
+        configure_simstrat_logging(stream=stream)
+        child_logger = logging.getLogger("kalden.core.simstrat.config.example")
+        child_logger.info("formatted message")
+
+        output = stream.getvalue()
+        assert output.count("formatted message") == 1
+        assert re.search(
+            r"\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\] "
+            r"\[INFO\] kalden\.core\.simstrat\.config\.example: "
+            r"formatted message",
+            output,
+        )
+        console_handlers = [
+            handler
+            for handler in package_logger.handlers
+            if handler.get_name() == "kalden.simstrat.console"
+        ]
+        assert len(console_handlers) == 1
+    finally:
+        for handler in list(package_logger.handlers):
+            if handler.get_name() == "kalden.simstrat.console":
+                package_logger.removeHandler(handler)
+                handler.close()
+        package_logger.setLevel(logging.NOTSET)
+        package_logger.propagate = True
+
+
 def test_setup_validation_rejects_invalid_schema_and_values(tmp_path: Path) -> None:
     setup_path = _write_setup(tmp_path)
     config = read_simstrat_model_setup(setup_path)
@@ -232,7 +293,10 @@ def test_load_inputs_supports_physical_and_selma_files(
     assert inputs["Forcing"].index[-1] == pd.Timestamp("2024-01-03")
 
 
-def test_input_loading_reports_missing_and_incomplete_files(tmp_path: Path) -> None:
+def test_input_loading_reports_missing_and_incomplete_files(
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
     setup_path = _write_setup(tmp_path)
     (setup_path.parent / "forcing.dat").unlink()
 
@@ -240,9 +304,15 @@ def test_input_loading_reports_missing_and_incomplete_files(tmp_path: Path) -> N
         SimstratConfig(setup_path).load_inputs()
 
     model = SimstratConfig(setup_path)
-    with pytest.warns(RuntimeWarning, match="Forcing"):
-        inputs = model.load_inputs(errors="warn")
+    with caplog.at_level(logging.WARNING, logger=model.log.name):
+        with pytest.warns(RuntimeWarning, match="Forcing"):
+            inputs = model.load_inputs(errors="warn")
     assert "Forcing" not in inputs
+    assert any(
+        record.levelno == logging.WARNING
+        and "Could not read 'Forcing'" in record.getMessage()
+        for record in caplog.records
+    )
 
     (setup_path.parent / "forcing.dat").write_text(
         "Time [d]\tAir temperature\n0\t10\n1\t11\n",
@@ -382,8 +452,17 @@ def test_reloading_empty_outputs_clears_previous_read_state(tmp_path: Path) -> N
 
 def test_invalid_fabm_flag_is_not_interpreted_by_string_truthiness(
     tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
 ) -> None:
     setup_path = _write_setup(tmp_path, couple_fabm="not-a-boolean")
+    model = SimstratConfig(setup_path)
 
-    with pytest.raises(SimstratConfigError, match="CoupleFABM"):
-        SimstratConfig(setup_path).load_inputs()
+    with caplog.at_level(logging.ERROR, logger=model.log.name):
+        with pytest.raises(SimstratConfigError, match="CoupleFABM"):
+            model.load_inputs()
+
+    assert any(
+        record.levelno == logging.ERROR
+        and "CoupleFABM must be a boolean" in record.getMessage()
+        for record in caplog.records
+    )
