@@ -1667,6 +1667,11 @@ class Res1D:
         ValueError
             If no supported objects are available in the result file.
         """
+        print(
+            "Loading MIKE+ RESULTDATA into memory. "
+            "This may take some time depending on the size of the .res1d file..."
+        )
+      
         preferred_type = _normalize_object_type(object_type)
     
         object_types = (
