@@ -88,16 +88,19 @@ def copied_sqlite_connection(
 
 @dataclass(frozen=True)
 class MPlusScenario:
+    muid: str
     name: str
-    parent: str | None = None
-    active: bool = False
-    network_alternative: str | None = None
+    parent: str | None
+    alternatives: tuple[int, ...]
+    network: str
+    network_alternative_id: int | None
 
 
 @dataclass(frozen=True)
 class MPlusNetwork:
-    alternative: str
-    scenarios: tuple[str, ...] = ()
+    name: str
+    alternative_id: int | None
+    scenarios: tuple[str, ...]
 
 class MPlusModel:
     """Read and analyse content from a MIKE+ SQLite database."""
@@ -111,10 +114,10 @@ class MPlusModel:
         """
         self.db_path = Path(db_path).expanduser()
 
-        self._scenario_tables: list[str] = []
-        self._scenarios: list[MPlusScenario] = []
+        self._scenarios: tuple[MPlusScenario, ...] = ()
+        self._networks: tuple[MPlusNetwork, ...] = ()
 
-        self._initialize_scenario_info()
+        self._initialize_scenarios()
     
     @property
     def scenarios(self) -> tuple[MPlusScenario, ...]:
@@ -229,9 +232,29 @@ class MPlusModel:
                 f"coordinate unit(s): {sorted(set(non_metric_axes))}."
             )
 
-    def _initialize_scenario_info(self) -> None:
+    @staticmethod
+    def _parse_scenario_alternatives(
+        value: str | None,
+    ) -> tuple[int, ...]:
+        """Parse the MIKE+ semicolon-separated alternative ID list."""
+        if not value:
+            return ()
+
+        return tuple(
+            int(item.strip())
+            for item in str(value).split(";")
+            if item.strip()
+        )
+
+
+    def _initialize_scenarios(self) -> None:
+        """Read MIKE+ scenarios and identify Collection Systems networks."""
+
+        scenario_table = "m_ScenarioManagementScenario"
+        alternative_table = "m_ScenarioManagementAlternative"
+
         with copied_sqlite_connection(self.db_path) as connection:
-            tables = {
+            existing_tables = {
                 row[0]
                 for row in connection.execute(
                     """
@@ -241,18 +264,144 @@ class MPlusModel:
                     """
                 )
             }
-    
-            scenario_tables = sorted(
-                table
-                for table in tables
-                if "scenario" in table.casefold()
-                or "alternative" in table.casefold()
+
+            # Databases without scenario management still have the Base network.
+            if (
+                scenario_table not in existing_tables
+                or alternative_table not in existing_tables
+            ):
+                self._scenarios = ()
+                self._networks = (
+                    MPlusNetwork(
+                        name="Base",
+                        alternative_id=None,
+                        scenarios=(),
+                    ),
+                )
+                return
+
+            alternative_rows = connection.execute(
+                """
+                SELECT
+                    muid,
+                    altid,
+                    groupid,
+                    parent
+                FROM m_ScenarioManagementAlternative
+                """
+            ).fetchall()
+
+            scenario_rows = connection.execute(
+                """
+                SELECT
+                    muid,
+                    name,
+                    parent,
+                    alternatives
+                FROM m_ScenarioManagementScenario
+                ORDER BY name COLLATE NOCASE
+                """
+            ).fetchall()
+
+        alternatives = {
+            int(row[1]): {
+                "name": (row[0] or "").strip(),
+                "group": (row[2] or "").strip(),
+                "parent": row[3],
+            }
+            for row in alternative_rows
+        }
+
+        scenarios: list[MPlusScenario] = []
+
+        for (
+            scenario_muid,
+            scenario_name,
+            parent,
+            alternative_value,
+        ) in scenario_rows:
+
+            alternative_ids = self._parse_scenario_alternatives(
+                alternative_value
             )
-    
-            self._scenario_tables = scenario_tables
-    
+
+            network_name = "Base"
+            network_alternative_id = None
+
+            for alternative_id in alternative_ids:
+                alternative = alternatives.get(alternative_id)
+
+                if alternative is None:
+                    continue
+
+                if alternative["group"].casefold() == "cs_network":
+                    network_name = alternative["name"]
+                    network_alternative_id = alternative_id
+                    break
+
+            scenarios.append(
+                MPlusScenario(
+                    muid=str(scenario_muid),
+                    name=str(scenario_name),
+                    parent=parent,
+                    alternatives=alternative_ids,
+                    network=network_name,
+                    network_alternative_id=network_alternative_id,
+                )
+            )
+
+        self._scenarios = tuple(scenarios)
+
+        grouped: dict[
+            tuple[str, int | None],
+            list[str],
+        ] = {}
+
+        for scenario in self._scenarios:
+            key = (
+                scenario.network,
+                scenario.network_alternative_id,
+            )
+
+            grouped.setdefault(key, []).append(
+                scenario.name
+            )
+
+        # Base should always exist conceptually, even if every explicit
+        # scenario happens to use another CS network alternative.
+        grouped.setdefault(
+            ("Base", None),
+            [],
+        )
+
+        self._networks = tuple(
+            MPlusNetwork(
+                name=name,
+                alternative_id=alternative_id,
+                scenarios=tuple(scenario_names),
+            )
+            for (
+                name,
+                alternative_id,
+            ), scenario_names in grouped.items()
+        )
+
+
+    @property
+    def scenarios(self) -> tuple[MPlusScenario, ...]:
+        """MIKE+ scenarios defined in the database."""
+        return self._scenarios
+
+
+    @property
+    def networks(self) -> tuple[MPlusNetwork, ...]:
+        """Unique Collection Systems network alternatives."""
+        return self._networks
+
+
     def scenario_tables(self) -> list[str]:
         return list(self._scenario_tables)
+        
         
     def list_tables(
         self,
