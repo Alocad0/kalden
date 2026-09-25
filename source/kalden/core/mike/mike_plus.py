@@ -93,8 +93,6 @@ class MPlusScenario:
     name: str
     parent: str | None
     alternatives: tuple[int, ...]
-    network: str
-    network_alternative_id: int | None
 
 
 @dataclass(frozen=True)
@@ -255,6 +253,64 @@ class MPlusModel:
             for item in str(value).split(";")
             if item.strip()
         )
+
+    def _scenario_alternative_chain(
+        self,
+        connection: sqlite3.Connection,
+        scenario: str | None,
+    ) -> tuple[int, ...]:
+        """Return all effective alternative IDs for a scenario."""
+
+        selected = self._scenario_alternative_ids(
+            scenario
+        )
+
+        ordered: list[int] = []
+
+        for alternative_id in selected:
+
+            chain = self._alternative_chain(
+                connection,
+                alternative_id,
+            )
+
+            # _alternative_chain currently includes Base = 0.
+            for alt_id in chain:
+                if alt_id == 0:
+                    continue
+
+                if alt_id not in ordered:
+                    ordered.append(alt_id)
+
+        return tuple(ordered)
+
+    def _scenario_alternative_ids(
+        self,
+        scenario: str | None,
+    ) -> tuple[int, ...]:
+        """Return the alternatives selected by a MIKE+ scenario."""
+
+        if scenario is None or scenario.casefold() == "base":
+            return ()
+
+        matches = [
+            item
+            for item in self.scenarios
+            if item.name.casefold() == scenario.casefold()
+        ]
+
+        if not matches:
+            available = ", ".join(
+                item.name
+                for item in self.scenarios
+            )
+
+            raise ValueError(
+                f"Unknown MIKE+ scenario {scenario!r}. "
+                f"Available scenarios: {available}"
+            )
+
+        return matches[0].alternatives
 
 
     def _initialize_scenarios(self) -> None:
@@ -553,28 +609,28 @@ class MPlusModel:
         return (0, *reversed(chain))
 
 
-    def _resolve_alternative_rows(
+    def _resolve_scenario_rows(
         self,
         connection: sqlite3.Connection,
         dataframe: pd.DataFrame,
         table_name: str,
-        alternative_id: int,
+        scenario: str | None,
         *,
         muid_column: str,
         altid_column: str,
     ) -> pd.DataFrame:
-        """Resolve Base + alternative rows into one effective MIKE+ table."""
+        """Resolve a MIKE+ table for the requested scenario."""
 
-        chain = self._alternative_chain(
+        alternative_ids = self._scenario_alternative_chain(
             connection,
-            alternative_id,
+            scenario,
         )
 
         resolved = dataframe.loc[
             dataframe[altid_column] == 0
         ].copy()
 
-        for alt_id in chain[1:]:
+        for alt_id in alternative_ids:
 
             alternative_rows = dataframe.loc[
                 dataframe[altid_column] == alt_id
@@ -586,15 +642,12 @@ class MPlusModel:
                     alternative_rows[muid_column]
                 )
 
-                # Remove inherited version.
                 resolved = resolved.loc[
                     ~resolved[muid_column].isin(
                         alternative_muids
                     )
                 ]
 
-                # Add alternative version. This handles both
-                # modified and newly-created objects.
                 resolved = pd.concat(
                     [
                         resolved,
@@ -752,7 +805,7 @@ class MPlusModel:
         geometry_column: str = "Geometry",
         crs: str = "EPSG:2056",
         *,
-        network: str | None = None,
+        scenario: str | None = None,
     ) -> gpd.GeoDataFrame:
         """
         Fetch every attribute and the geometry from a spatial MIKE+ table.
@@ -985,18 +1038,23 @@ class MPlusModel:
                 muid_column = muid_matches[0]
                 altid_column = altid_matches[0]
 
-                alternative_id = self._network_alternative_id(
-                    network
+                # Get every effective alternative selected by the scenario.
+                # This should NOT include Base / AltID 0.
+                alternative_ids = self._scenario_alternative_chain(
+                    connection,
+                    scenario,
                 )
 
-                chain = self._alternative_chain(
-                    connection,
-                    alternative_id,
+                # Always fetch Base, plus every alternative relevant to
+                # the selected scenario.
+                query_alt_ids = (
+                    0,
+                    *alternative_ids,
                 )
 
                 placeholders = ", ".join(
                     "?"
-                    for _ in chain
+                    for _ in query_alt_ids
                 )
 
                 query = f"""
@@ -1010,20 +1068,22 @@ class MPlusModel:
                 dataframe = pd.read_sql_query(
                     query,
                     connection,
-                    params=chain,
+                    params=query_alt_ids,
                 )
 
-                dataframe = self._resolve_alternative_rows(
+                dataframe = self._resolve_scenario_rows(
                     connection,
                     dataframe,
                     actual_table_name,
-                    alternative_id,
+                    scenario,
                     muid_column=muid_column,
                     altid_column=altid_column,
                 )
 
             else:
-                # Table does not use the MIKE+ scenario mechanism.
+
+                # Tables without MUID/AltID are not controlled by the
+                # MIKE+ scenario mechanism.
                 query = f"""
                 SELECT
                     {", ".join(select_expressions)}
