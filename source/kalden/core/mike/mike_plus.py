@@ -86,6 +86,7 @@ def copied_sqlite_connection(
         finally:
             connection.close()
 
+
 @dataclass(frozen=True)
 class MPlusScenario:
     muid: str
@@ -101,6 +102,15 @@ class MPlusNetwork:
     name: str
     alternative_id: int | None
     scenarios: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class MPlusNetworkData:
+    name: str
+    alternative_id: int | None
+    nodes: gpd.GeoDataFrame
+    links: gpd.GeoDataFrame
+
 
 class MPlusModel:
     """Read and analyse content from a MIKE+ SQLite database."""
@@ -620,6 +630,121 @@ class MPlusModel:
                 ]
 
         return resolved.reset_index(drop=True)
+
+    def fetch_network(
+        self,
+        network: str = "Base",
+        *,
+        crs: str = "EPSG:2056",
+        validate: bool = True,
+    ) -> MPlusNetworkData:
+        """Fetch a fully resolved Collection Systems network."""
+
+        matches = [
+            item
+            for item in self.networks
+            if item.name.casefold() == network.casefold()
+        ]
+
+        if not matches:
+            available = ", ".join(
+                item.name
+                for item in self.networks
+            )
+
+            raise ValueError(
+                f"Unknown CS network {network!r}. "
+                f"Available networks: {available}"
+            )
+
+        network_info = matches[0]
+
+        nodes = self.fetch_table_attributes_geometry(
+            "msm_Node",
+            crs=crs,
+            network=network_info.name,
+        )
+
+        links = self.fetch_table_attributes_geometry(
+            "msm_Link",
+            crs=crs,
+            network=network_info.name,
+        )
+
+        if validate:
+            self._validate_network_connectivity(
+                nodes,
+                links,
+            )
+
+        return MPlusNetworkData(
+            name=network_info.name,
+            alternative_id=network_info.alternative_id,
+            nodes=nodes,
+            links=links,
+        )
+
+    @staticmethod
+    def _validate_network_connectivity(
+        nodes: gpd.GeoDataFrame,
+        links: gpd.GeoDataFrame,
+    ) -> None:
+        """Validate link endpoint references in a resolved CS network."""
+
+        node_id_column = MPlusModel._resolve_column(
+            nodes,
+            "muid",
+        )
+
+        from_node_column = MPlusModel._resolve_column(
+            links,
+            "fromnodeid",
+        )
+
+        to_node_column = MPlusModel._resolve_column(
+            links,
+            "tonodeid",
+        )
+
+        node_ids = set(
+            nodes[node_id_column].dropna()
+        )
+
+        missing_from = sorted(
+            set(
+                links[from_node_column].dropna()
+            )
+            - node_ids,
+            key=str,
+        )
+
+        missing_to = sorted(
+            set(
+                links[to_node_column].dropna()
+            )
+            - node_ids,
+            key=str,
+        )
+
+        if missing_from or missing_to:
+            errors = []
+
+            if missing_from:
+                errors.append(
+                    "Missing FromNodeID references: "
+                    + ", ".join(map(str, missing_from[:20]))
+                )
+
+            if missing_to:
+                errors.append(
+                    "Missing ToNodeID references: "
+                    + ", ".join(map(str, missing_to[:20]))
+                )
+
+            raise ValueError(
+                "Invalid resolved CS network:\n- "
+                + "\n- ".join(errors)
+            )
 
     def fetch_table_attributes_geometry(
         self,
