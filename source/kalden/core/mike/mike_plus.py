@@ -402,7 +402,7 @@ class MPlusModel:
     def scenario_tables(self) -> list[str]:
         return list(self._scenario_tables)
         
-        
+
     def list_tables(
         self,
         contains: str | None = None,
@@ -460,11 +460,174 @@ class MPlusModel:
 
         return names
 
+    def _network_alternative_id(
+        self,
+        network: str | None,
+    ) -> int:
+        """Resolve a CS network name to its MIKE+ alternative ID."""
+
+        if network is None or network.casefold() == "base":
+            return 0
+
+        matches = [
+            item
+            for item in self.networks
+            if item.name.casefold() == network.casefold()
+        ]
+
+        if not matches:
+            available = ", ".join(
+                item.name
+                for item in self.networks
+            )
+
+            raise ValueError(
+                f"Unknown CS network {network!r}. "
+                f"Available networks: {available}"
+            )
+
+        alternative_id = matches[0].alternative_id
+
+        if alternative_id is None:
+            return 0
+
+        return int(alternative_id)
+
+
+    def _alternative_chain(
+        self,
+        connection: sqlite3.Connection,
+        alternative_id: int,
+    ) -> tuple[int, ...]:
+        """Return the MIKE+ alternative inheritance chain."""
+
+        if alternative_id == 0:
+            return (0,)
+
+        chain: list[int] = []
+        visited: set[int] = set()
+        current = alternative_id
+
+        while current != 0:
+
+            if current in visited:
+                raise ValueError(
+                    "Circular MIKE+ alternative inheritance "
+                    f"detected at AltID {current}."
+                )
+
+            visited.add(current)
+            chain.append(current)
+
+            row = connection.execute(
+                """
+                SELECT parent
+                FROM m_ScenarioManagementAlternative
+                WHERE altid = ?
+                """,
+                (current,),
+            ).fetchone()
+
+            if row is None:
+                raise ValueError(
+                    f"MIKE+ alternative {current} was not found."
+                )
+
+            parent = row[0]
+
+            if parent in (None, 0):
+                break
+
+            current = int(parent)
+
+        return (0, *reversed(chain))
+
+
+    def _resolve_alternative_rows(
+        self,
+        connection: sqlite3.Connection,
+        dataframe: pd.DataFrame,
+        table_name: str,
+        alternative_id: int,
+        *,
+        muid_column: str,
+        altid_column: str,
+    ) -> pd.DataFrame:
+        """Resolve Base + alternative rows into one effective MIKE+ table."""
+
+        chain = self._alternative_chain(
+            connection,
+            alternative_id,
+        )
+
+        resolved = dataframe.loc[
+            dataframe[altid_column] == 0
+        ].copy()
+
+        for alt_id in chain[1:]:
+
+            alternative_rows = dataframe.loc[
+                dataframe[altid_column] == alt_id
+            ].copy()
+
+            if not alternative_rows.empty:
+
+                alternative_muids = set(
+                    alternative_rows[muid_column]
+                )
+
+                # Remove inherited version.
+                resolved = resolved.loc[
+                    ~resolved[muid_column].isin(
+                        alternative_muids
+                    )
+                ]
+
+                # Add alternative version. This handles both
+                # modified and newly-created objects.
+                resolved = pd.concat(
+                    [
+                        resolved,
+                        alternative_rows,
+                    ],
+                    ignore_index=True,
+                )
+
+            deleted_rows = connection.execute(
+                """
+                SELECT DeletedMUID
+                FROM m_ScenarioManagementDeletedRows
+                WHERE AltID = ?
+                AND lower(TableName) = lower(?)
+                """,
+                (
+                    alt_id,
+                    table_name,
+                ),
+            ).fetchall()
+
+            if deleted_rows:
+
+                deleted_muids = {
+                    row[0]
+                    for row in deleted_rows
+                }
+
+                resolved = resolved.loc[
+                    ~resolved[muid_column].isin(
+                        deleted_muids
+                    )
+                ]
+
+        return resolved.reset_index(drop=True)
+
     def fetch_table_attributes_geometry(
         self,
         table_name: str,
         geometry_column: str = "Geometry",
         crs: str = "EPSG:2056",
+        *,
+        network: str | None = None,
     ) -> gpd.GeoDataFrame:
         """
         Fetch every attribute and the geometry from a spatial MIKE+ table.
@@ -476,6 +639,10 @@ class MPlusModel:
                 Name of the SpatiaLite geometry column.
             crs:
                 CRS assigned to the returned GeoDataFrame.
+            network:
+                Collection Systems network alternative to resolve. ``None`` and
+                ``"Base"`` select the Base network. Other values must match a
+                CS network alternative exposed by ``model.networks``.
 
         Returns:
             GeoDataFrame containing every non-geometry attribute and a Shapely
@@ -488,6 +655,8 @@ class MPlusModel:
                 If the database query fails.
             RuntimeError:
                 If the SpatiaLite extension cannot be loaded.
+            ValueError:
+                If the requested network does not exist.
         """
         # with sqlite3.connect(str(self.db_path)) as connection:
         #     connection.enable_load_extension(True)
@@ -660,13 +829,86 @@ class MPlusModel:
                 f"AS {self._quote_identifier(wkt_alias)}"
             )
 
-            query = f"""
+            # query = f"""
+            #     SELECT
+            #         {", ".join(select_expressions)}
+            #     FROM {quoted_table};
+            # """
+
+            # dataframe = pd.read_sql_query(query, connection)
+
+            # Identify MIKE+ scenario columns, if present.
+            muid_matches = [
+                column
+                for column in column_names
+                if column.casefold() == "muid"
+            ]
+
+            altid_matches = [
+                column
+                for column in column_names
+                if column.casefold() == "altid"
+            ]
+
+            scenario_aware = (
+                len(muid_matches) == 1
+                and len(altid_matches) == 1
+            )
+
+            if scenario_aware:
+
+                muid_column = muid_matches[0]
+                altid_column = altid_matches[0]
+
+                alternative_id = self._network_alternative_id(
+                    network
+                )
+
+                chain = self._alternative_chain(
+                    connection,
+                    alternative_id,
+                )
+
+                placeholders = ", ".join(
+                    "?"
+                    for _ in chain
+                )
+
+                query = f"""
+                SELECT
+                    {", ".join(select_expressions)}
+                FROM {quoted_table}
+                WHERE {self._quote_identifier(altid_column)}
+                    IN ({placeholders});
+                """
+
+                dataframe = pd.read_sql_query(
+                    query,
+                    connection,
+                    params=chain,
+                )
+
+                dataframe = self._resolve_alternative_rows(
+                    connection,
+                    dataframe,
+                    actual_table_name,
+                    alternative_id,
+                    muid_column=muid_column,
+                    altid_column=altid_column,
+                )
+
+            else:
+                # Table does not use the MIKE+ scenario mechanism.
+                query = f"""
                 SELECT
                     {", ".join(select_expressions)}
                 FROM {quoted_table};
-            """
+                """
 
-            dataframe = pd.read_sql_query(query, connection)
+                dataframe = pd.read_sql_query(
+                    query,
+                    connection,
+                )
 
             dataframe["geometry"] = dataframe[wkt_alias].map(
                 lambda value: (
