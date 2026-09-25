@@ -1645,6 +1645,62 @@ class Res1D:
         )
         return self._series_cache_stem(ref)
 
+    def initialize(self, object_type: str = "reach") -> ObjectRef:
+        """Initialize the result reader using the first available object.
+    
+        The requested ``object_type`` is tried first. If no object of that type is
+        available, the remaining supported object types are tried in their default
+        order.
+    
+        Parameters
+        ----------
+        object_type : str, default "reach"
+            Preferred object type to initialize from.
+    
+        Returns
+        -------
+        ObjectRef
+            Reference to the object used for initialization.
+    
+        Raises
+        ------
+        ValueError
+            If no supported objects are available in the result file.
+        """
+        preferred_type = _normalize_object_type(object_type)
+    
+        object_types = (
+            preferred_type,
+            *(
+                candidate
+                for candidate in DEFAULT_OBJECT_TYPES
+                if candidate != preferred_type
+            ),
+        )
+    
+        for candidate_type in object_types:
+            for ref, obj in self._iter_object_items(candidate_type):
+                # Important for reach-backed special objects:
+                # don't initialize "reach" from Weir:..., Pump:..., etc.
+                if ref.object_type != candidate_type:
+                    continue
+    
+                quantities = _public_readable_quantities(obj)
+                if not quantities:
+                    continue
+    
+                self.read_series(
+                    ref.object_type,
+                    ref.object_id,
+                    quantities[0],
+                )
+    
+                return ref
+    
+        raise ValueError(
+            "Could not initialize Res1D: no readable result objects were found."
+        )
+    
     def read_series(
         self,
         object_type: str,
