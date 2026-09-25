@@ -98,6 +98,12 @@ class MPlusModel:
         """
         self.db_path = Path(db_path).expanduser()
 
+        self.scenario = None
+        self.scenarios = []
+        self.network_alternative = None
+
+        self._initialize_scenario_info()
+
     @staticmethod
     def _quote_identifier(identifier: str) -> str:
         """Safely quote an SQLite table or column identifier."""
@@ -175,6 +181,31 @@ class MPlusModel:
                 f"coordinate unit(s): {sorted(set(non_metric_axes))}."
             )
 
+    def _initialize_scenario_info(self) -> None:
+        with copied_sqlite_connection(self.db_path) as connection:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    """
+                    SELECT name
+                    FROM sqlite_master
+                    WHERE type = 'table'
+                    """
+                )
+            }
+    
+            scenario_tables = sorted(
+                table
+                for table in tables
+                if "scenario" in table.casefold()
+                or "alternative" in table.casefold()
+            )
+    
+            self._scenario_tables = scenario_tables
+    
+    def scenario_tables(self) -> list[str]:
+        return list(self._scenario_tables)
+        
     def list_tables(
         self,
         contains: str | None = None,
