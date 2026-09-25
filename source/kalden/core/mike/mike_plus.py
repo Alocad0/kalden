@@ -13,6 +13,7 @@ from __future__ import annotations
 import sqlite3
 import shutil
 import math
+from dataclasses import dataclass
 from os import PathLike
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -85,6 +86,18 @@ def copied_sqlite_connection(
         finally:
             connection.close()
 
+@dataclass(frozen=True)
+class MPlusScenario:
+    name: str
+    parent: str | None = None
+    active: bool = False
+    network_alternative: str | None = None
+
+
+@dataclass(frozen=True)
+class MPlusNetwork:
+    alternative: str
+    scenarios: tuple[str, ...] = ()
 
 class MPlusModel:
     """Read and analyse content from a MIKE+ SQLite database."""
@@ -101,7 +114,7 @@ class MPlusModel:
         self._scenario_tables: list[str] = []
         self._scenarios: list[MPlusScenario] = []
 
-        self._initialize_scenarios()
+        self._initialize_scenario_info()
     
     @property
     def scenarios(self) -> tuple[MPlusScenario, ...]:
@@ -1204,17 +1217,3 @@ class MPlusModel:
                 print(f"Summary successfully exported to {output_path}")
 
         return results_df
-
-
-@dataclass(frozen=True)
-class MPlusScenario:
-    name: str
-    parent: str | None = None
-    active: bool = False
-    network_alternative: str | None = None
-
-
-@dataclass(frozen=True)
-class MPlusNetwork:
-    alternative: str
-    scenarios: tuple[str, ...] = ()
