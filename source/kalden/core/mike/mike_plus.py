@@ -98,11 +98,46 @@ class MPlusModel:
         """
         self.db_path = Path(db_path).expanduser()
 
-        self.scenario = None
-        self.scenarios = []
-        self.network_alternative = None
+        self._scenario_tables: list[str] = []
+        self._scenarios: list[MPlusScenario] = []
 
-        self._initialize_scenario_info()
+        self._initialize_scenarios()
+    
+    @property
+    def scenarios(self) -> tuple[MPlusScenario, ...]:
+        return tuple(self._scenarios)
+
+    @property
+    def scenario(self) -> MPlusScenario | None:
+        return next(
+            (
+                scenario
+                for scenario in self._scenarios
+                if scenario.active
+            ),
+            None,
+        )
+
+    @property
+    def networks(self) -> tuple[MPlusNetwork, ...]:
+        grouped: dict[str, list[str]] = {}
+
+        for scenario in self._scenarios:
+            if scenario.network_alternative is None:
+                continue
+
+            grouped.setdefault(
+                scenario.network_alternative,
+                [],
+            ).append(scenario.name)
+
+        return tuple(
+            MPlusNetwork(
+                alternative=alternative,
+                scenarios=tuple(scenarios),
+            )
+            for alternative, scenarios in grouped.items()
+        )
 
     @staticmethod
     def _quote_identifier(identifier: str) -> str:
@@ -1169,3 +1204,17 @@ class MPlusModel:
                 print(f"Summary successfully exported to {output_path}")
 
         return results_df
+
+
+@dataclass(frozen=True)
+class MPlusScenario:
+    name: str
+    parent: str | None = None
+    active: bool = False
+    network_alternative: str | None = None
+
+
+@dataclass(frozen=True)
+class MPlusNetwork:
+    alternative: str
+    scenarios: tuple[str, ...] = ()
