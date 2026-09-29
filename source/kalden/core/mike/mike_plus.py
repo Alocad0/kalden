@@ -117,22 +117,6 @@ class MPlusScenario:
     parent: str | None
     alternatives: tuple[int, ...]
 
-
-@dataclass(frozen=True)
-class MPlusNetwork:
-    name: str
-    alternative_id: int | None
-    scenarios: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class MPlusNetworkData:
-    name: str
-    alternative_id: int | None
-    nodes: gpd.GeoDataFrame
-    links: gpd.GeoDataFrame
-
-
 @dataclass
 class UpstreamResult:
     target_node_id: str
@@ -141,7 +125,6 @@ class UpstreamResult:
     catchments: gpd.GeoDataFrame
     catchment_connections: pd.DataFrame
     total_area_ha: float
-
 
 @dataclass
 class MPlusTopology:
@@ -278,8 +261,6 @@ class MPlusModel:
         self.db_path = Path(db_path).expanduser()
 
         self._scenarios: tuple[MPlusScenario, ...] = ()
-        self._networks: tuple[MPlusNetwork, ...] = ()
-
         self._initialize_scenarios()
     
     @property
@@ -295,27 +276,6 @@ class MPlusModel:
                 if scenario.active
             ),
             None,
-        )
-
-    @property
-    def networks(self) -> tuple[MPlusNetwork, ...]:
-        grouped: dict[str, list[str]] = {}
-
-        for scenario in self._scenarios:
-            if scenario.network_alternative is None:
-                continue
-
-            grouped.setdefault(
-                scenario.network_alternative,
-                [],
-            ).append(scenario.name)
-
-        return tuple(
-            MPlusNetwork(
-                alternative=alternative,
-                scenarios=tuple(scenarios),
-            )
-            for alternative, scenarios in grouped.items()
         )
 
     @staticmethod
@@ -493,10 +453,9 @@ class MPlusModel:
 
 
     def _initialize_scenarios(self) -> None:
-        """Read MIKE+ scenarios and identify Collection Systems networks."""
+        """Read MIKE+ scenarios."""
 
         scenario_table = "m_ScenarioManagementScenario"
-        alternative_table = "m_ScenarioManagementAlternative"
 
         with copied_sqlite_connection(self.db_path) as connection:
             existing_tables = {
@@ -510,31 +469,9 @@ class MPlusModel:
                 )
             }
 
-            # Databases without scenario management still have the Base network.
-            if (
-                scenario_table not in existing_tables
-                or alternative_table not in existing_tables
-            ):
+            if scenario_table not in existing_tables:
                 self._scenarios = ()
-                self._networks = (
-                    MPlusNetwork(
-                        name="Base",
-                        alternative_id=None,
-                        scenarios=(),
-                    ),
-                )
                 return
-
-            alternative_rows = connection.execute(
-                """
-                SELECT
-                    muid,
-                    altid,
-                    groupid,
-                    parent
-                FROM m_ScenarioManagementAlternative
-                """
-            ).fetchall()
 
             scenario_rows = connection.execute(
                 """
@@ -548,99 +485,27 @@ class MPlusModel:
                 """
             ).fetchall()
 
-        alternatives = {
-            int(row[1]): {
-                "name": (row[0] or "").strip(),
-                "group": (row[2] or "").strip(),
-                "parent": row[3],
-            }
-            for row in alternative_rows
-        }
-
-        scenarios: list[MPlusScenario] = []
-
-        for (
-            scenario_muid,
-            scenario_name,
-            parent,
-            alternative_value,
-        ) in scenario_rows:
-
-            alternative_ids = self._parse_scenario_alternatives(
-                alternative_value
-            )
-
-            network_name = "Base"
-            network_alternative_id = None
-
-            for alternative_id in alternative_ids:
-                alternative = alternatives.get(alternative_id)
-
-                if alternative is None:
-                    continue
-
-                if alternative["group"].casefold() == "cs_network":
-                    network_name = alternative["name"]
-                    network_alternative_id = alternative_id
-                    break
-
-            scenarios.append(
-                MPlusScenario(
-                    muid=str(scenario_muid),
-                    name=str(scenario_name),
-                    parent=parent,
-                    alternatives=alternative_ids,
-                    network=network_name,
-                    network_alternative_id=network_alternative_id,
-                )
-            )
-
-        self._scenarios = tuple(scenarios)
-
-        grouped: dict[
-            tuple[str, int | None],
-            list[str],
-        ] = {}
-
-        for scenario in self._scenarios:
-            key = (
-                scenario.network,
-                scenario.network_alternative_id,
-            )
-
-            grouped.setdefault(key, []).append(
-                scenario.name
-            )
-
-        # Base should always exist conceptually, even if every explicit
-        # scenario happens to use another CS network alternative.
-        grouped.setdefault(
-            ("Base", None),
-            [],
-        )
-
-        self._networks = tuple(
-            MPlusNetwork(
-                name=name,
-                alternative_id=alternative_id,
-                scenarios=tuple(scenario_names),
+        self._scenarios = tuple(
+            MPlusScenario(
+                muid=str(scenario_muid),
+                name=str(scenario_name),
+                parent=parent,
+                alternatives=self._parse_scenario_alternatives(
+                    alternative_value
+                ),
             )
             for (
-                name,
-                alternative_id,
-            ), scenario_names in grouped.items()
+                scenario_muid,
+                scenario_name,
+                parent,
+                alternative_value,
+            ) in scenario_rows
         )
-
 
     @property
     def scenarios(self) -> tuple[MPlusScenario, ...]:
         """MIKE+ scenarios defined in the database."""
         return self._scenarios
-
-    @property
-    def networks(self) -> tuple[MPlusNetwork, ...]:
-        """Unique Collection Systems network alternatives."""
-        return self._networks
 
     def scenario_tables(self) -> list[str]:
         return list(self._scenario_tables)
@@ -701,40 +566,6 @@ class MPlusModel:
             print(f"\n{len(names)} table(s) found.")
 
         return names
-
-    def _network_alternative_id(
-        self,
-        network: str | None,
-    ) -> int:
-        """Resolve a CS network name to its MIKE+ alternative ID."""
-
-        if network is None or network.casefold() == "base":
-            return 0
-
-        matches = [
-            item
-            for item in self.networks
-            if item.name.casefold() == network.casefold()
-        ]
-
-        if not matches:
-            available = ", ".join(
-                item.name
-                for item in self.networks
-            )
-
-            raise ValueError(
-                f"Unknown CS network {network!r}. "
-                f"Available networks: {available}"
-            )
-
-        alternative_id = matches[0].alternative_id
-
-        if alternative_id is None:
-            return 0
-
-        return int(alternative_id)
-
 
     def _alternative_chain(
         self,
@@ -893,7 +724,7 @@ class MPlusModel:
         )
 
         if validate:
-            self._validate_network_connectivity(
+            self._validate_topology_connectivity(
                 nodes,
                 links,
             )
@@ -912,61 +743,10 @@ class MPlusModel:
             graph=graph,
         )
 
-    def fetch_network(
-        self,
-        network: str = "Base",
-        *,
-        crs: str = "EPSG:2056",
-        validate: bool = True,
-    ) -> MPlusNetworkData:
-        """Fetch a fully resolved Collection Systems network."""
 
-        matches = [
-            item
-            for item in self.networks
-            if item.name.casefold() == network.casefold()
-        ]
-
-        if not matches:
-            available = ", ".join(
-                item.name
-                for item in self.networks
-            )
-
-            raise ValueError(
-                f"Unknown CS network {network!r}. "
-                f"Available networks: {available}"
-            )
-
-        network_info = matches[0]
-
-        nodes = self.fetch_table_attributes_geometry(
-            "msm_Node",
-            crs=crs,
-            network=network_info.name,
-        )
-
-        links = self.fetch_table_attributes_geometry(
-            "msm_Link",
-            crs=crs,
-            network=network_info.name,
-        )
-
-        if validate:
-            self._validate_network_connectivity(
-                nodes,
-                links,
-            )
-
-        return MPlusNetworkData(
-            name=network_info.name,
-            alternative_id=network_info.alternative_id,
-            nodes=nodes,
-            links=links,
-        )
 
     @staticmethod
-    def _validate_network_connectivity(
+    def _validate_topology_connectivity(
         nodes: gpd.GeoDataFrame,
         links: gpd.GeoDataFrame,
     ) -> None:
