@@ -357,6 +357,7 @@ class UpstreamResult:
     total_area_ha: float
 
     def explore(self) -> folium.Map:
+        import folium
         catchments = self.catchments.to_crs("EPSG:4326")
         links = self.links.to_crs("EPSG:4326")
         nodes = self.nodes.to_crs("EPSG:4326")
