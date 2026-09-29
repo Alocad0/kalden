@@ -419,7 +419,7 @@ class UpstreamResult:
 class MPlusModel:
     """Read and analyse content from a MIKE+ SQLite database."""
 
-    def __init__(self, db_path: str | PathLike[str]) -> None:
+    def __init__(self, path: str | Path) -> None:
         """
         Initialise the MIKE+ model helper.
 
