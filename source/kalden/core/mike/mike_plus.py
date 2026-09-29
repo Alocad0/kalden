@@ -86,7 +86,7 @@ def copied_sqlite_connection(
         finally:
             connection.close()
 
-def _resolve_column(
+def resolve_column(
     dataframe: pd.DataFrame,
     column_name: str,
 ) -> str:
@@ -174,32 +174,32 @@ class MPlusTopology:
         )
 
         # Resolve relevant column names.
-        node_id_column = _resolve_column(
+        node_id_column = resolve_column(
             self.nodes,
             "MUID",
         )
 
-        from_node_column = _resolve_column(
+        from_node_column = resolve_column(
             self.links,
             "FromNodeID",
         )
 
-        to_node_column = _resolve_column(
+        to_node_column = resolve_column(
             self.links,
             "ToNodeID",
         )
 
-        catch_node_column = _resolve_column(
+        catch_node_column = resolve_column(
             self.catchment_connections,
             "NodeID",
         )
 
-        catch_id_column = _resolve_column(
+        catch_id_column = resolve_column(
             self.catchment_connections,
             "CatchID",
         )
 
-        catchment_muid_column = _resolve_column(
+        catchment_muid_column = resolve_column(
             self.catchments,
             "MUID",
         )
@@ -327,31 +327,6 @@ class MPlusModel:
         return '"' + identifier.replace('"', '""') + '"'
 
     @staticmethod
-    def _resolve_column(
-        dataframe: pd.DataFrame,
-        requested_column: str,
-    ) -> Any:
-        """Resolve a DataFrame column name case-insensitively."""
-        matches = [
-            column
-            for column in dataframe.columns
-            if str(column).casefold() == requested_column.casefold()
-        ]
-
-        if not matches:
-            raise ValueError(
-                f"Column '{requested_column}' was not found. "
-                f"Available columns: {list(dataframe.columns)}"
-            )
-
-        if len(matches) > 1:
-            raise ValueError(
-                f"Multiple columns match '{requested_column}': {matches}"
-            )
-
-        return matches[0]
-
-    @staticmethod
     def _require_active_geometry(gdf: gpd.GeoDataFrame, name: str) -> None:
         """Validate that a GeoDataFrame has an active geometry column."""
         if not isinstance(gdf, gpd.GeoDataFrame):
@@ -416,19 +391,19 @@ class MPlusModel:
     ) -> nx.MultiDiGraph:
         """Build a directed hydraulic graph from resolved MIKE+ nodes and links."""
 
-        node_id_column = _resolve_column(
+        node_id_column = resolve_column(
             nodes,
             "MUID",
         )
-        link_id_column = _resolve_column(
+        link_id_column = resolve_column(
             links,
             "MUID",
         )
-        from_node_column = _resolve_column(
+        from_node_column = resolve_column(
             links,
             "FromNodeID",
         )
-        to_node_column = _resolve_column(
+        to_node_column = resolve_column(
             links,
             "ToNodeID",
         )
@@ -997,17 +972,17 @@ class MPlusModel:
     ) -> None:
         """Validate link endpoint references in a resolved CS network."""
 
-        node_id_column = _resolve_column(
+        node_id_column = resolve_column(
             nodes,
             "muid",
         )
 
-        from_node_column = _resolve_column(
+        from_node_column = resolve_column(
             links,
             "fromnodeid",
         )
 
-        to_node_column = _resolve_column(
+        to_node_column = resolve_column(
             links,
             "tonodeid",
         )
@@ -1652,15 +1627,15 @@ class MPlusModel:
         """
         MPlusModel._require_active_geometry(nodes_gdf, "nodes_gdf")
 
-        node_id_column = _resolve_column(
+        node_id_column = resolve_column(
             nodes_gdf,
             node_id_column,
         )
-        from_node_column = _resolve_column(
+        from_node_column = resolve_column(
             links_df,
             from_node_column,
         )
-        to_node_column = _resolve_column(
+        to_node_column = resolve_column(
             links_df,
             to_node_column,
         )
@@ -1804,11 +1779,11 @@ class MPlusModel:
         Raises:
             ValueError: If one or more checks fail.
         """
-        catchment_id_column = _resolve_column(
+        catchment_id_column = resolve_column(
             catchments_gdf,
             catchment_id_column,
         )
-        connection_id_column = _resolve_column(
+        connection_id_column = resolve_column(
             catchment_connections_gdf,
             connection_id_column,
         )
@@ -1949,29 +1924,29 @@ class MPlusModel:
         )
         MPlusModel._require_active_geometry(links_gdf, "links_gdf")
 
-        connection_node_column = _resolve_column(
+        connection_node_column = resolve_column(
             catchment_connections_gdf,
             connection_node_column,
         )
-        catchment_geometry_column = _resolve_column(
+        catchment_geometry_column = resolve_column(
             catchment_connections_gdf,
             catchment_geometry_column,
         )
         if plot:
-            catchment_id_column = _resolve_column(
+            catchment_id_column = resolve_column(
                 catchment_connections_gdf,
                 catchment_id_column,
             )
 
-        node_geometry_column = _resolve_column(
+        node_geometry_column = resolve_column(
             catchment_connections_gdf,
             node_geometry_column,
         )
-        from_node_column = _resolve_column(
+        from_node_column = resolve_column(
             links_gdf,
             from_node_column,
         )
-        to_node_column = _resolve_column(
+        to_node_column = resolve_column(
             links_gdf,
             to_node_column,
         )
@@ -2172,23 +2147,23 @@ class MPlusModel:
         MPlusModel._require_active_geometry(links_gdf, "links_gdf")
         MPlusModel._require_active_geometry(nodes_gdf, "nodes_gdf")
 
-        connection_node_column = _resolve_column(
+        connection_node_column = resolve_column(
             catchment_connections_gdf,
             connection_node_column,
         )
-        catchment_geometry_column = _resolve_column(
+        catchment_geometry_column = resolve_column(
             catchment_connections_gdf,
             catchment_geometry_column,
         )
-        node_id_column = _resolve_column(
+        node_id_column = resolve_column(
             nodes_gdf,
             node_id_column,
         )
-        from_node_column = _resolve_column(
+        from_node_column = resolve_column(
             links_gdf,
             from_node_column,
         )
-        to_node_column = _resolve_column(
+        to_node_column = resolve_column(
             links_gdf,
             to_node_column,
         )
