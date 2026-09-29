@@ -86,6 +86,115 @@ def copied_sqlite_connection(
         finally:
             connection.close()
 
+def resolve_mplus_database_path(
+    path: str | Path,
+) -> Path:
+    """Resolve a MIKE+ SQLite database from a .sqlite or .mupp path."""
+
+    path = Path(path)
+
+    if not path.exists():
+        raise FileNotFoundError(
+            f"MIKE+ file does not exist: {path}"
+        )
+
+    suffix = path.suffix.casefold()
+
+    if suffix == ".sqlite":
+        return path.resolve()
+
+    if suffix == ".mupp":
+        return _database_path_from_mupp(path)
+
+    raise ValueError(
+        "Expected a MIKE+ .sqlite database or .mupp project file, "
+        f"got: {path}"
+    )
+
+def _database_path_from_mupp(
+    mupp_path: Path,
+) -> Path:
+    """Extract DBFilePath from the [MIKE_URBAN] section of a MUPP file."""
+
+    text = _read_mupp_text(mupp_path)
+
+    in_mike_urban = False
+    db_file_path: str | None = None
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+
+        if not line:
+            continue
+
+        if line.startswith("[") and line.endswith("]"):
+            section = line[1:-1].strip()
+
+            in_mike_urban = (
+                section.casefold() == "mike_urban"
+            )
+            continue
+
+        if not in_mike_urban:
+            continue
+
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+
+        if key.strip().casefold() != "dbfilepath":
+            continue
+
+        db_file_path = value.strip()
+        break
+
+    if db_file_path is None:
+        raise ValueError(
+            f"No DBFilePath found in [MIKE_URBAN] section of "
+            f"{mupp_path}"
+        )
+
+    # MIKE+ commonly stores file paths as:
+    #
+    # |.\17.2_DP_Mumpf.sqlite|
+    #
+    db_file_path = db_file_path.strip("|").strip("'\"").strip()
+
+    database_path = Path(db_file_path)
+
+    if not database_path.is_absolute():
+        database_path = mupp_path.parent / database_path
+
+    database_path = database_path.resolve()
+
+    if not database_path.exists():
+        raise FileNotFoundError(
+            "Database referenced by MUPP does not exist: "
+            f"{database_path}"
+        )
+
+    if database_path.suffix.casefold() != ".sqlite":
+        raise ValueError(
+            "The MUPP project does not reference a SQLite database: "
+            f"{database_path}"
+        )
+
+    return database_path
+
+def _read_mupp_text(path: Path) -> str:
+    data = path.read_bytes()
+
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            return data.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+
+    raise UnicodeError(
+        f"Could not decode MIKE+ project file: {path}"
+    )
+
 def resolve_column(
     dataframe: pd.DataFrame,
     column_name: str,
@@ -247,6 +356,65 @@ class UpstreamResult:
     catchment_connections: pd.DataFrame
     total_area_ha: float
 
+    def explore(self) -> folium.Map:
+        catchments = self.catchments.to_crs("EPSG:4326")
+        links = self.links.to_crs("EPSG:4326")
+        nodes = self.nodes.to_crs("EPSG:4326")
+
+        m = catchments.explore(
+            name="Catchments",
+            tooltip=True,
+            style_kwds={
+                "fillOpacity": 0.25,
+                "weight": 1,
+            },
+        )
+
+        links.explore(
+            m=m,
+            name="Links",
+            tooltip=True,
+            style_kwds={
+                "weight": 3,
+            },
+        )
+
+        nodes.explore(
+            m=m,
+            name="Nodes",
+            tooltip=True,
+            marker_kwds={
+                "radius": 4,
+            },
+        )
+
+        node_id_column = resolve_column(
+            nodes,
+            "MUID",
+        )
+
+        target = nodes.loc[
+            nodes[node_id_column] == self.target_node_id
+        ]
+
+        if not target.empty:
+            point = target.geometry.iloc[0]
+
+            folium.CircleMarker(
+                location=[point.y, point.x],
+                radius=9,
+                color="red",
+                fill=True,
+                fill_color="red",
+                fill_opacity=1.0,
+                weight=3,
+                tooltip=f"Target: {self.target_node_id}",
+            ).add_to(m)
+
+        folium.LayerControl().add_to(m)
+
+        return m
+
 
 class MPlusModel:
     """Read and analyse content from a MIKE+ SQLite database."""
@@ -258,7 +426,8 @@ class MPlusModel:
         Args:
             db_path: Path to the MIKE+ SQLite database file.
         """
-        self.db_path = Path(db_path).expanduser()
+        self.path = Path(path)
+        self.db_path = resolve_mplus_database_path(self.path)
 
         self._scenarios: tuple[MPlusScenario, ...] = ()
         self._initialize_scenarios()
