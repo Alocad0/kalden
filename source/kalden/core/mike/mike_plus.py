@@ -86,6 +86,29 @@ def copied_sqlite_connection(
         finally:
             connection.close()
 
+def _resolve_column(
+    dataframe: pd.DataFrame,
+    column_name: str,
+) -> str:
+    matches = [
+        column
+        for column in dataframe.columns
+        if column.casefold() == column_name.casefold()
+    ]
+
+    if not matches:
+        raise ValueError(
+            f"Column {column_name!r} not found. "
+            f"Available columns: {list(dataframe.columns)}"
+        )
+
+    if len(matches) > 1:
+        raise ValueError(
+            f"Multiple columns match {column_name!r}: "
+            f"{matches}"
+        )
+
+    return matches[0]
 
 @dataclass(frozen=True)
 class MPlusScenario:
@@ -108,6 +131,138 @@ class MPlusNetworkData:
     alternative_id: int | None
     nodes: gpd.GeoDataFrame
     links: gpd.GeoDataFrame
+
+
+@dataclass
+class UpstreamResult:
+    target_node_id: str
+    nodes: gpd.GeoDataFrame
+    links: gpd.GeoDataFrame
+    catchments: gpd.GeoDataFrame
+    catchment_connections: pd.DataFrame
+    total_area_ha: float
+
+
+@dataclass
+class MPlusTopology:
+    scenario: str
+    nodes: gpd.GeoDataFrame
+    links: gpd.GeoDataFrame
+    catchments: gpd.GeoDataFrame
+    catchment_connections: pd.DataFrame
+    graph: nx.MultiDiGraph
+
+    def upstream(
+        self,
+        target_node_id: str,
+    ) -> UpstreamResult:
+        """Return the hydraulic network and catchments upstream of a node."""
+
+        if target_node_id not in self.graph:
+            raise ValueError(
+                f"Node {target_node_id!r} does not exist "
+                f"in scenario {self.scenario!r}."
+            )
+
+        # Hydraulic nodes contributing to the target.
+        upstream_node_ids = (
+            nx.ancestors(
+                self.graph,
+                target_node_id,
+            )
+            | {target_node_id}
+        )
+
+        # Resolve relevant column names.
+        node_id_column = _resolve_column(
+            self.nodes,
+            "MUID",
+        )
+
+        from_node_column = _resolve_column(
+            self.links,
+            "FromNodeID",
+        )
+
+        to_node_column = _resolve_column(
+            self.links,
+            "ToNodeID",
+        )
+
+        catch_node_column = _resolve_column(
+            self.catchment_connections,
+            "NodeID",
+        )
+
+        catch_id_column = _resolve_column(
+            self.catchment_connections,
+            "CatchID",
+        )
+
+        catchment_muid_column = _resolve_column(
+            self.catchments,
+            "MUID",
+        )
+
+        # Hydraulic network.
+        upstream_nodes = self.nodes.loc[
+            self.nodes[node_id_column].isin(
+                upstream_node_ids
+            )
+        ].copy()
+
+        upstream_links = self.links.loc[
+            self.links[from_node_column].isin(
+                upstream_node_ids
+            )
+            & self.links[to_node_column].isin(
+                upstream_node_ids
+            )
+        ].copy()
+
+        # Catchment connections entering the upstream network.
+        upstream_connections = self.catchment_connections.loc[
+            self.catchment_connections[
+                catch_node_column
+            ].isin(upstream_node_ids)
+        ].copy()
+
+        catchment_ids = set(
+            upstream_connections[
+                catch_id_column
+            ].dropna()
+        )
+
+        upstream_catchments = self.catchments.loc[
+            self.catchments[
+                catchment_muid_column
+            ].isin(catchment_ids)
+        ].copy()
+
+        # Assumes a projected CRS whose units are metres,
+        # e.g. EPSG:2056.
+        total_area_ha = (
+            upstream_catchments.geometry.area.sum()
+            / 10_000
+        )
+
+        return UpstreamResult(
+            target_node_id=target_node_id,
+            nodes=upstream_nodes,
+            links=upstream_links,
+            catchments=upstream_catchments,
+            catchment_connections=upstream_connections,
+            total_area_ha=total_area_ha,
+        )
+
+@dataclass
+class UpstreamResult:
+    target_node_id: str
+    nodes: gpd.GeoDataFrame
+    links: gpd.GeoDataFrame
+    catchments: gpd.GeoDataFrame
+    catchment_connections: pd.DataFrame
+    total_area_ha: float
 
 
 class MPlusModel:
@@ -253,6 +408,55 @@ class MPlusModel:
             for item in str(value).split(";")
             if item.strip()
         )
+
+    @staticmethod
+    def _build_topology_graph(
+        nodes: gpd.GeoDataFrame,
+        links: gpd.GeoDataFrame,
+    ) -> nx.MultiDiGraph:
+        """Build a directed hydraulic graph from resolved MIKE+ nodes and links."""
+
+        node_id_column = _resolve_column(
+            nodes,
+            "MUID",
+        )
+        link_id_column = _resolve_column(
+            links,
+            "MUID",
+        )
+        from_node_column = _resolve_column(
+            links,
+            "FromNodeID",
+        )
+        to_node_column = _resolve_column(
+            links,
+            "ToNodeID",
+        )
+
+        graph = nx.MultiDiGraph()
+
+        graph.add_nodes_from(
+            nodes[node_id_column].dropna()
+        )
+
+        valid_links = links.dropna(
+            subset=[
+                from_node_column,
+                to_node_column,
+            ]
+        )
+
+        for index, row in valid_links.iterrows():
+            link_id = row[link_id_column]
+
+            graph.add_edge(
+                row[from_node_column],
+                row[to_node_column],
+                key=link_id if pd.notna(link_id) else index,
+                muid=link_id,
+            )
+
+        return graph
 
     def _scenario_alternative_chain(
         self,
@@ -458,17 +662,14 @@ class MPlusModel:
         """MIKE+ scenarios defined in the database."""
         return self._scenarios
 
-
     @property
     def networks(self) -> tuple[MPlusNetwork, ...]:
         """Unique Collection Systems network alternatives."""
         return self._networks
 
-
     def scenario_tables(self) -> list[str]:
         return list(self._scenario_tables)
         
-
     def list_tables(
         self,
         contains: str | None = None,
@@ -684,6 +885,58 @@ class MPlusModel:
 
         return resolved.reset_index(drop=True)
 
+    def fetch_topology(
+        self,
+        scenario: str = "Base",
+        *,
+        crs: str = "EPSG:2056",
+        validate: bool = True,
+    ) -> MPlusTopology:
+        """Fetch and assemble the resolved MIKE+ hydraulic topology."""
+
+        nodes = self.fetch_spatial_table(
+            "msm_Node",
+            scenario=scenario,
+            crs=crs,
+        )
+
+        links = self.fetch_spatial_table(
+            "msm_Link",
+            scenario=scenario,
+            crs=crs,
+        )
+
+        catchments = self.fetch_spatial_table(
+            "msm_Catchment",
+            scenario=scenario,
+            crs=crs,
+        )
+
+        catchment_connections = self.fetch_table(
+            "msm_CatchCon",
+            scenario=scenario,
+        )
+
+        if validate:
+            self._validate_network_connectivity(
+                nodes,
+                links,
+            )
+
+        graph = self._build_topology_graph(
+            nodes,
+            links,
+        )
+
+        return MPlusTopology(
+            scenario=scenario,
+            nodes=nodes,
+            links=links,
+            catchments=catchments,
+            catchment_connections=catchment_connections,
+            graph=graph,
+        )
+
     def fetch_network(
         self,
         network: str = "Base",
@@ -744,17 +997,17 @@ class MPlusModel:
     ) -> None:
         """Validate link endpoint references in a resolved CS network."""
 
-        node_id_column = MPlusModel._resolve_column(
+        node_id_column = _resolve_column(
             nodes,
             "muid",
         )
 
-        from_node_column = MPlusModel._resolve_column(
+        from_node_column = _resolve_column(
             links,
             "fromnodeid",
         )
 
-        to_node_column = MPlusModel._resolve_column(
+        to_node_column = _resolve_column(
             links,
             "tonodeid",
         )
@@ -798,6 +1051,261 @@ class MPlusModel:
                 "Invalid resolved CS network:\n- "
                 + "\n- ".join(errors)
             )
+
+    def _table_schema(
+        self,
+        connection: sqlite3.Connection,
+        table_name: str,
+    ) -> tuple[str, list[str]]:
+        """Return the actual table name and its columns."""
+
+        table_row = connection.execute(
+            """
+            SELECT name
+            FROM sqlite_master
+            WHERE type IN ('table', 'view')
+            AND name = ? COLLATE NOCASE
+            """,
+            (table_name,),
+        ).fetchone()
+
+        if table_row is None:
+            raise ValueError(
+                f"Table or view does not exist: {table_name}"
+            )
+
+        actual_table_name = table_row[0]
+        quoted_table = self._quote_identifier(actual_table_name)
+
+        table_info = connection.execute(
+            f"PRAGMA table_info({quoted_table})"
+        ).fetchall()
+
+        column_names = [column[1] for column in table_info]
+
+        return actual_table_name, column_names
+    
+    def _read_resolved_table(
+        self,
+        connection: sqlite3.Connection,
+        table_name: str,
+        column_names: list[str],
+        select_expressions: list[str],
+        *,
+        scenario: str | None = None,
+    ) -> pd.DataFrame:
+        """Read table rows resolved for the requested MIKE+ scenario."""
+
+        quoted_table = self._quote_identifier(table_name)
+
+        muid_matches = [
+            column
+            for column in column_names
+            if column.casefold() == "muid"
+        ]
+        altid_matches = [
+            column
+            for column in column_names
+            if column.casefold() == "altid"
+        ]
+
+        scenario_aware = (
+            len(muid_matches) == 1
+            and len(altid_matches) == 1
+        )
+
+        if not scenario_aware:
+            query = f"""
+                SELECT
+                    {", ".join(select_expressions)}
+                FROM {quoted_table};
+            """
+
+            return pd.read_sql_query(
+                query,
+                connection,
+            )
+
+        muid_column = muid_matches[0]
+        altid_column = altid_matches[0]
+
+        alternative_ids = self._scenario_alternative_chain(
+            connection,
+            scenario,
+        )
+
+        query_alt_ids = (
+            0,
+            *alternative_ids,
+        )
+
+        placeholders = ", ".join(
+            "?" for _ in query_alt_ids
+        )
+
+        query = f"""
+            SELECT
+                {", ".join(select_expressions)}
+            FROM {quoted_table}
+            WHERE {self._quote_identifier(altid_column)}
+                IN ({placeholders});
+        """
+
+        dataframe = pd.read_sql_query(
+            query,
+            connection,
+            params=query_alt_ids,
+        )
+
+        return self._resolve_scenario_rows(
+            connection,
+            dataframe,
+            table_name,
+            scenario,
+            muid_column=muid_column,
+            altid_column=altid_column,
+        )
+
+    def fetch_table(
+        self,
+        table_name: str,
+        *,
+        scenario: str | None = None,
+    ) -> pd.DataFrame:
+        """Fetch a scenario-resolved MIKE+ table."""
+
+        with copied_sqlite_connection(self.db_path) as connection:
+            actual_table_name, column_names = self._table_schema(
+                connection,
+                table_name,
+            )
+
+            select_expressions = [
+                self._quote_identifier(column)
+                for column in column_names
+            ]
+
+            return self._read_resolved_table(
+                connection,
+                actual_table_name,
+                column_names,
+                select_expressions,
+                scenario=scenario,
+            )
+
+    def fetch_spatial_table(
+        self,
+        table_name: str,
+        geometry_column: str = "Geometry",
+        crs: str = "EPSG:2056",
+        *,
+        scenario: str | None = None,
+    ) -> gpd.GeoDataFrame:
+        """
+        Fetch every attribute and geometry from a spatial MIKE+ table.
+
+        If the table contains MUID and AltID columns, rows are resolved
+        according to the requested MIKE+ scenario.
+
+        Args:
+            table_name:
+                Name of the spatial table or view.
+            geometry_column:
+                Name of the SpatiaLite geometry column.
+            crs:
+                CRS assigned to the returned GeoDataFrame.
+            scenario:
+                MIKE+ scenario to resolve. ``None`` and ``"Base"``
+                resolve the Base data.
+
+        Returns:
+            GeoDataFrame containing every non-geometry attribute and
+            a Shapely geometry column.
+        """
+
+        with copied_sqlite_connection(self.db_path) as connection:
+            connection.enable_load_extension(True)
+
+            try:
+                connection.execute(
+                    'SELECT load_extension("mod_spatialite")'
+                )
+            except sqlite3.Error as exc:
+                raise RuntimeError(
+                    "Could not load the 'mod_spatialite' SQLite extension."
+                ) from exc
+            finally:
+                connection.enable_load_extension(False)
+
+            actual_table_name, column_names = self._table_schema(
+                connection,
+                table_name,
+            )
+
+            geometry_matches = [
+                column
+                for column in column_names
+                if column.casefold() == geometry_column.casefold()
+            ]
+
+            if not geometry_matches:
+                raise ValueError(
+                    f"Geometry column '{geometry_column}' was not found "
+                    f"in table '{actual_table_name}'. Available columns: "
+                    f"{column_names}"
+                )
+
+            if len(geometry_matches) > 1:
+                raise ValueError(
+                    "Multiple columns match geometry column "
+                    f"'{geometry_column}': {geometry_matches}"
+                )
+
+            actual_geometry_column = geometry_matches[0]
+
+            attribute_columns = [
+                column
+                for column in column_names
+                if column != actual_geometry_column
+            ]
+
+            wkt_alias = "_kalden_wkt_geometry"
+
+            while wkt_alias in column_names:
+                wkt_alias = f"_{wkt_alias}"
+
+            select_expressions = [
+                self._quote_identifier(column)
+                for column in attribute_columns
+            ]
+
+            select_expressions.append(
+                f"AsText("
+                f"{self._quote_identifier(actual_geometry_column)}"
+                f") AS {self._quote_identifier(wkt_alias)}"
+            )
+
+            dataframe = self._read_resolved_table(
+                connection,
+                actual_table_name,
+                column_names,
+                select_expressions,
+                scenario=scenario,
+            )
+
+        dataframe["geometry"] = dataframe[wkt_alias].map(
+            lambda value: (
+                loads(value)
+                if isinstance(value, str) and value.strip()
+                else None
+            )
+        )
+
+        return gpd.GeoDataFrame(
+            dataframe.drop(columns=wkt_alias),
+            geometry="geometry",
+            crs=crs,
+        )
 
     def fetch_table_attributes_geometry(
         self,
@@ -1144,15 +1652,15 @@ class MPlusModel:
         """
         MPlusModel._require_active_geometry(nodes_gdf, "nodes_gdf")
 
-        node_id_column = MPlusModel._resolve_column(
+        node_id_column = _resolve_column(
             nodes_gdf,
             node_id_column,
         )
-        from_node_column = MPlusModel._resolve_column(
+        from_node_column = _resolve_column(
             links_df,
             from_node_column,
         )
-        to_node_column = MPlusModel._resolve_column(
+        to_node_column = _resolve_column(
             links_df,
             to_node_column,
         )
@@ -1296,11 +1804,11 @@ class MPlusModel:
         Raises:
             ValueError: If one or more checks fail.
         """
-        catchment_id_column = MPlusModel._resolve_column(
+        catchment_id_column = _resolve_column(
             catchments_gdf,
             catchment_id_column,
         )
-        connection_id_column = MPlusModel._resolve_column(
+        connection_id_column = _resolve_column(
             catchment_connections_gdf,
             connection_id_column,
         )
@@ -1441,29 +1949,29 @@ class MPlusModel:
         )
         MPlusModel._require_active_geometry(links_gdf, "links_gdf")
 
-        connection_node_column = MPlusModel._resolve_column(
+        connection_node_column = _resolve_column(
             catchment_connections_gdf,
             connection_node_column,
         )
-        catchment_geometry_column = MPlusModel._resolve_column(
+        catchment_geometry_column = _resolve_column(
             catchment_connections_gdf,
             catchment_geometry_column,
         )
         if plot:
-            catchment_id_column = MPlusModel._resolve_column(
+            catchment_id_column = _resolve_column(
                 catchment_connections_gdf,
                 catchment_id_column,
             )
 
-        node_geometry_column = MPlusModel._resolve_column(
+        node_geometry_column = _resolve_column(
             catchment_connections_gdf,
             node_geometry_column,
         )
-        from_node_column = MPlusModel._resolve_column(
+        from_node_column = _resolve_column(
             links_gdf,
             from_node_column,
         )
-        to_node_column = MPlusModel._resolve_column(
+        to_node_column = _resolve_column(
             links_gdf,
             to_node_column,
         )
@@ -1664,23 +2172,23 @@ class MPlusModel:
         MPlusModel._require_active_geometry(links_gdf, "links_gdf")
         MPlusModel._require_active_geometry(nodes_gdf, "nodes_gdf")
 
-        connection_node_column = MPlusModel._resolve_column(
+        connection_node_column = _resolve_column(
             catchment_connections_gdf,
             connection_node_column,
         )
-        catchment_geometry_column = MPlusModel._resolve_column(
+        catchment_geometry_column = _resolve_column(
             catchment_connections_gdf,
             catchment_geometry_column,
         )
-        node_id_column = MPlusModel._resolve_column(
+        node_id_column = _resolve_column(
             nodes_gdf,
             node_id_column,
         )
-        from_node_column = MPlusModel._resolve_column(
+        from_node_column = _resolve_column(
             links_gdf,
             from_node_column,
         )
-        to_node_column = MPlusModel._resolve_column(
+        to_node_column = _resolve_column(
             links_gdf,
             to_node_column,
         )
