@@ -10,6 +10,7 @@ Created: 2026-01-15
 
 from __future__ import annotations
 
+import warnings
 import sqlite3
 import shutil
 import math
