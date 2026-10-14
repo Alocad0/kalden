@@ -6,7 +6,11 @@ import pandas as pd
 import pytest
 from shapely.geometry import LineString, Point, Polygon
 
-from kalden.core.mike.mike_plus import MPlusModel, copied_sqlite_connection
+from kalden.core.mike.mike_plus import (
+    MPlusModel,
+    copied_sqlite_connection,
+    resolve_column,
+)
 
 
 def _create_database(path: Path) -> None:
@@ -72,19 +76,18 @@ def test_list_tables_filters_names_and_optionally_includes_views(
         "beta",
     ]
 
-
 def test_sqlite_identifier_quoting_and_column_resolution() -> None:
     assert MPlusModel._quote_identifier('table"name') == '"table""name"'
+
     with pytest.raises(ValueError, match="non-empty strings"):
         MPlusModel._quote_identifier("")
 
     frame = pd.DataFrame(columns=["MUID", "value"])
-    assert MPlusModel._resolve_column(frame, "muid") == "MUID"
+    assert resolve_column(frame, "muid") == "MUID"
 
     ambiguous = pd.DataFrame(columns=["MUID", "muid"])
     with pytest.raises(ValueError, match="Multiple columns"):
-        MPlusModel._resolve_column(ambiguous, "muid")
-
+        resolve_column(ambiguous, "muid")
 
 def test_build_link_geometries_uses_endpoint_points_and_crs() -> None:
     nodes = gpd.GeoDataFrame(
