@@ -230,15 +230,7 @@ class MPlusScenario:
     name: str
     parent: str | None
     alternatives: tuple[int, ...]
-
-@dataclass
-class UpstreamResult:
-    target_node_id: str
-    nodes: gpd.GeoDataFrame
-    links: gpd.GeoDataFrame
-    catchments: gpd.GeoDataFrame
-    catchment_connections: pd.DataFrame
-    total_area_ha: float
+    active: bool = False
 
 @dataclass
 class MPlusTopology:
@@ -436,6 +428,7 @@ class MPlusModel:
         self.db_path = resolve_mplus_database_path(self.path)
 
         self._scenarios: tuple[MPlusScenario, ...] = ()
+        self._scenario_tables: list[str] = []
         self._initialize_scenarios()
     
     @property
