@@ -25,8 +25,12 @@ import matplotlib.pyplot as plt
 import networkx as nx
 import pandas as pd
 from shapely.geometry import LineString
-from shapely.wkt import loads
 from tqdm.auto import tqdm
+
+from .spatialite_blob import (
+    SpatialiteBlobError,
+    decode_geometry_value,
+)
 
 
 @contextmanager
@@ -1128,88 +1132,65 @@ class MPlusModel:
     ) -> gpd.GeoDataFrame:
         """
         Fetch every attribute and geometry from a spatial MIKE+ table.
-
+    
+        Geometry is decoded directly from the SpatiaLite BLOB in Python;
+        mod_spatialite is not required.
+    
         If the table contains MUID and AltID columns, rows are resolved
         according to the requested MIKE+ scenario.
-
-        Args:
-            table_name:
-                Name of the spatial table or view.
-            geometry_column:
-                Name of the SpatiaLite geometry column.
-            crs:
-                CRS assigned to the returned GeoDataFrame.
-            scenario:
-                MIKE+ scenario to resolve. ``None`` and ``"Base"``
-                resolve the Base data.
-
-        Returns:
-            GeoDataFrame containing every non-geometry attribute and
-            a Shapely geometry column.
         """
-
+    
         with copied_sqlite_connection(self.db_path) as connection:
-            connection.enable_load_extension(True)
-
-            try:
-                connection.execute(
-                    'SELECT load_extension("mod_spatialite")'
-                )
-            except sqlite3.Error as exc:
-                raise RuntimeError(
-                    "Could not load the 'mod_spatialite' SQLite extension."
-                ) from exc
-            finally:
-                connection.enable_load_extension(False)
-
             actual_table_name, column_names = self._table_schema(
                 connection,
                 table_name,
             )
-
+    
             geometry_matches = [
                 column
                 for column in column_names
                 if column.casefold() == geometry_column.casefold()
             ]
-
+    
             if not geometry_matches:
                 raise ValueError(
-                    f"Geometry column '{geometry_column}' was not found "
-                    f"in table '{actual_table_name}'. Available columns: "
-                    f"{column_names}"
+                    f"Geometry column {geometry_column!r} was not found "
+                    f"in table {actual_table_name!r}. "
+                    f"Available columns: {column_names}"
                 )
-
+    
             if len(geometry_matches) > 1:
                 raise ValueError(
                     "Multiple columns match geometry column "
-                    f"'{geometry_column}': {geometry_matches}"
+                    f"{geometry_column!r}: {geometry_matches}"
                 )
-
+    
             actual_geometry_column = geometry_matches[0]
-
+    
             attribute_columns = [
                 column
                 for column in column_names
                 if column != actual_geometry_column
             ]
-
-            wkt_alias = "_kalden_wkt_geometry"
-
-            while wkt_alias in column_names:
-                wkt_alias = f"_{wkt_alias}"
-
+    
+            # Temporary DataFrame column containing the raw SQLite BLOB.
+            geometry_alias = "_kalden_geometry_value"
+    
+            while geometry_alias in column_names:
+                geometry_alias = f"_{geometry_alias}"
+    
             select_expressions = [
                 self._quote_identifier(column)
                 for column in attribute_columns
             ]
-
+    
+            # Important: select the raw geometry value.
+            # No AsText(), therefore no SpatiaLite extension is necessary.
             select_expressions.append(
-                f"AsText("
-                f"{self._quote_identifier(actual_geometry_column)}"
-                f") AS {self._quote_identifier(wkt_alias)}"
+                f"{self._quote_identifier(actual_geometry_column)} "
+                f"AS {self._quote_identifier(geometry_alias)}"
             )
-
+    
             dataframe = self._read_resolved_table(
                 connection,
                 actual_table_name,
@@ -1217,18 +1198,28 @@ class MPlusModel:
                 select_expressions,
                 scenario=scenario,
             )
-
-        dataframe["geometry"] = dataframe[wkt_alias].map(
-            lambda value: (
-                loads(value)
-                if isinstance(value, str) and value.strip()
-                else None
-            )
-        )
-
+    
+        # At this point the temporary SQLite connection can already be closed.
+        geometries = []
+    
+        for row_number, value in enumerate(
+            dataframe.pop(geometry_alias),
+            start=1,
+        ):
+            try:
+                geometry, _srid, _source_format = decode_geometry_value(value)
+    
+            except Exception as exc:
+                raise SpatialiteBlobError(
+                    f"Could not decode geometry in "
+                    f"{actual_table_name!r}, row {row_number}: {exc}"
+                ) from exc
+    
+            geometries.append(geometry)
+    
         return gpd.GeoDataFrame(
-            dataframe.drop(columns=wkt_alias),
-            geometry="geometry",
+            dataframe,
+            geometry=geometries,
             crs=crs,
         )
 
@@ -1240,11 +1231,8 @@ class MPlusModel:
         *,
         scenario: str | None = None,
     ) -> gpd.GeoDataFrame:
-        """
-        Deprecated: use :meth:`fetch_spatial_table` instead.
+        """Deprecated compatibility wrapper for fetch_spatial_table()."""
     
-        This method is retained temporarily for backwards compatibility.
-        """
         warnings.warn(
             "fetch_table_attributes_geometry() is deprecated; "
             "use fetch_spatial_table() instead.",
@@ -1258,7 +1246,6 @@ class MPlusModel:
             crs=crs,
             scenario=scenario,
         )
-
 
     @staticmethod
     def build_link_geometries_from_nodes(
