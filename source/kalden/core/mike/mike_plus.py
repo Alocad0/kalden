@@ -238,6 +238,7 @@ class MPlusTopology:
     nodes: gpd.GeoDataFrame
     links: gpd.GeoDataFrame
     weirs: gpd.GeoDataFrame
+    pumps: gpd.GeoDataFrame
     catchments: gpd.GeoDataFrame
     catchment_connections: pd.DataFrame
     graph: nx.MultiDiGraph
@@ -923,6 +924,12 @@ class MPlusModel:
             crs=crs,
         )
 
+        pumps = self.fetch_spatial_table(
+            "msm_Pump",
+            scenario=scenario,
+            crs=crs,
+        )
+
         catchments = self.fetch_spatial_table(
             "msm_Catchment",
             scenario=scenario,
@@ -950,6 +957,7 @@ class MPlusModel:
             nodes=nodes,
             links=links,
             weirs=weirs,
+            pumps=pumps,
             catchments=catchments,
             catchment_connections=catchment_connections,
             graph=graph,
