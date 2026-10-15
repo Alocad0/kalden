@@ -2,6 +2,7 @@ import sqlite3
 from pathlib import Path
 
 import geopandas as gpd
+import networkx as nx
 import pandas as pd
 import pytest
 from shapely.geometry import LineString, Point, Polygon
@@ -160,6 +161,31 @@ def test_build_catchment_connection_geometry_uses_centroid() -> None:
 
     assert isinstance(geometry, LineString)
     assert list(geometry.coords) == [(1.0, 1.0), (4.0, 1.0)]
+
+
+def test_fetch_topology_includes_weirs() -> None:
+    model = object.__new__(MPlusModel)
+    spatial_tables = {
+        table_name: gpd.GeoDataFrame(
+            {"MUID": []},
+            geometry=gpd.GeoSeries([], crs="EPSG:2056"),
+        )
+        for table_name in (
+            "msm_Node",
+            "msm_Link",
+            "msm_Weir",
+            "msm_Catchment",
+        )
+    }
+    model.fetch_spatial_table = lambda table_name, **kwargs: spatial_tables[
+        table_name
+    ]
+    model.fetch_table = lambda table_name, **kwargs: pd.DataFrame()
+    model._build_topology_graph = lambda nodes, links: nx.MultiDiGraph()
+
+    topology = model.fetch_topology(validate=False)
+
+    assert topology.weirs is spatial_tables["msm_Weir"]
 
 
 def test_validate_catchment_connections_accepts_one_to_one_mapping() -> None:

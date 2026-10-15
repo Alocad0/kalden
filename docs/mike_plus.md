@@ -80,13 +80,16 @@ The reader resolves the applicable records according to the scenario and its alt
 
 ## 4. Extract network topology
 
-`fetch_topology()` assembles the network structure, including nodes, links, catchments, and their connections.
+`fetch_topology()` assembles the network structure, including nodes, links, weirs, catchments, and their connections.
 
 ```python
 topology = db.fetch_topology()
 
 # Inspect the resulting object
 print(topology)
+
+# Inspect weirs included in the topology
+print(topology.weirs.head())
 ```
 
 Topology extraction is useful for network connectivity checks, identifying connected elements, and preparing graph-based analyses.

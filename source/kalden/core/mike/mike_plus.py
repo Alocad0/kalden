@@ -949,6 +949,7 @@ class MPlusModel:
             scenario=scenario,
             nodes=nodes,
             links=links,
+            weirs=weirs,
             catchments=catchments,
             catchment_connections=catchment_connections,
             graph=graph,
