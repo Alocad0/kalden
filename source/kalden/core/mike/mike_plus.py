@@ -680,7 +680,7 @@ class MPlusModel:
 
         scenario_tables = []
 
-        with copied_sqlite_connection(self.sqlite_path) as connection:
+        with copied_sqlite_connection(self.db_path) as connection:
             table_names = [
                 row[0]
                 for row in connection.execute(
