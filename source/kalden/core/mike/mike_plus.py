@@ -237,6 +237,7 @@ class MPlusTopology:
     scenario: str
     nodes: gpd.GeoDataFrame
     links: gpd.GeoDataFrame
+    weirs: gpd.GeoDataFrame
     catchments: gpd.GeoDataFrame
     catchment_connections: pd.DataFrame
     graph: nx.MultiDiGraph
@@ -912,6 +913,12 @@ class MPlusModel:
 
         links = self.fetch_spatial_table(
             "msm_Link",
+            scenario=scenario,
+            crs=crs,
+        )
+
+        weirs = self.fetch_spatial_table(
+            "msm_Weir",
             scenario=scenario,
             crs=crs,
         )
