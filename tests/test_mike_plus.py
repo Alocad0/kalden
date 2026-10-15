@@ -76,6 +76,30 @@ def test_list_tables_filters_names_and_optionally_includes_views(
         "beta",
     ]
 
+def test_scenario_tables_lists_tables_with_muid_and_altid(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "model.sqlite"
+    connection = sqlite3.connect(source)
+    try:
+        connection.execute(
+            "CREATE TABLE scenario_data (MUID TEXT, AltID INTEGER)"
+        )
+        connection.execute("CREATE TABLE base_data (MUID TEXT)")
+        connection.execute("CREATE TABLE alternative_data (AltID INTEGER)")
+        connection.execute(
+            "CREATE VIEW scenario_view AS "
+            "SELECT MUID, AltID FROM scenario_data"
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    model = MPlusModel(source)
+
+    assert model.scenario_tables() == ["scenario_data"]
+
+
 def test_sqlite_identifier_quoting_and_column_resolution() -> None:
     assert MPlusModel._quote_identifier('table"name') == '"table""name"'
 

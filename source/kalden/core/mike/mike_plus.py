@@ -676,8 +676,37 @@ class MPlusModel:
         return self._scenarios
 
     def scenario_tables(self) -> list[str]:
-        return list(self._scenario_tables)
-        
+        """Return tables with the MUID and AltID columns used for scenarios."""
+        with copied_sqlite_connection(self.db_path) as connection:
+            table_names = [
+                row[0]
+                for row in connection.execute(
+                    """
+                    SELECT name
+                    FROM sqlite_master
+                    WHERE type = 'table'
+                      AND name NOT LIKE 'sqlite_%'
+                    ORDER BY name COLLATE NOCASE
+                    """
+                )
+            ]
+
+            scenario_tables = []
+
+            for table_name in table_names:
+                quoted_table = self._quote_identifier(table_name)
+                columns = {
+                    row[1].casefold()
+                    for row in connection.execute(
+                        f"PRAGMA table_info({quoted_table})"
+                    )
+                }
+
+                if {"muid", "altid"}.issubset(columns):
+                    scenario_tables.append(table_name)
+
+        return scenario_tables
+
     def list_tables(
         self,
         contains: str | None = None,
