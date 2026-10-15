@@ -676,8 +676,11 @@ class MPlusModel:
         return self._scenarios
 
     def scenario_tables(self) -> list[str]:
-        """Return tables with the MUID and AltID columns used for scenarios."""
-        with copied_sqlite_connection(self.db_path) as connection:
+        """Return regular tables containing both MUID and AltID."""
+
+        scenario_tables = []
+
+        with copied_sqlite_connection(self.sqlite_path) as connection:
             table_names = [
                 row[0]
                 for row in connection.execute(
@@ -685,22 +688,26 @@ class MPlusModel:
                     SELECT name
                     FROM sqlite_master
                     WHERE type = 'table'
-                      AND name NOT LIKE 'sqlite_%'
-                    ORDER BY name COLLATE NOCASE
+                    AND sql NOT LIKE 'CREATE VIRTUAL TABLE%'
+                    ORDER BY name
                     """
                 )
             ]
 
-            scenario_tables = []
-
             for table_name in table_names:
                 quoted_table = self._quote_identifier(table_name)
-                columns = {
-                    row[1].casefold()
-                    for row in connection.execute(
-                        f"PRAGMA table_info({quoted_table})"
-                    )
-                }
+
+                try:
+                    columns = {
+                        row[1].casefold()
+                        for row in connection.execute(
+                            f"PRAGMA table_info({quoted_table})"
+                        )
+                    }
+                except sqlite3.OperationalError as exc:
+                    if "no such module" in str(exc).lower():
+                        continue
+                    raise
 
                 if {"muid", "altid"}.issubset(columns):
                     scenario_tables.append(table_name)
