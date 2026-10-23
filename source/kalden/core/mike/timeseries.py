@@ -825,6 +825,113 @@ class Dfs0:
 
         return findings
 
+    def plot(
+        self,
+        columns=None,
+        library="plotly",
+        mode="lines",
+        traces_names=None,
+        title="",
+        xlabel="",
+        ylabel="",
+    ):
+        """
+        Plot DataFrame columns using Plotly or Matplotlib.
+    
+        Parameters
+        ----------
+        columns : list[str], str or None
+            Columns to plot. Defaults to all numeric columns.
+        library : str
+            Plotting backend: "plotly" (default) or "matplotlib".
+        mode : str
+            "lines", "markers", or "lines+markers".
+        traces_names : list[str] or None
+            Optional names for each plotted series.
+        title, xlabel, ylabel : str
+            Chart title and axis labels.
+    
+        Returns
+        -------
+        plotly.graph_objects.Figure or matplotlib.figure.Figure
+        """
+        df = self
+    
+        if columns is None or len(columns) == 0:
+            columns = df.select_dtypes(include="number").columns.tolist()
+        elif isinstance(columns, str):
+            columns = [columns]
+        else:
+            columns = list(columns)
+    
+        if not columns:
+            raise ValueError("No columns available to plot.")
+    
+        if mode not in ("lines", "markers", "lines+markers"):
+            raise ValueError(f"Unsupported plot mode: {mode}")
+    
+        if traces_names is None:
+            traces_names = [str(col) for col in columns]
+        elif len(traces_names) != len(columns):
+            raise ValueError(
+                "traces_names must have the same length as columns."
+            )
+    
+        if library == "plotly":
+            import plotly.graph_objects as go
+    
+            fig = go.Figure()
+    
+            for col, name in zip(columns, traces_names):
+                fig.add_trace(go.Scatter(
+                    x=df.index,
+                    y=df[col],
+                    name=name,
+                    mode=mode,
+                    connectgaps=False,
+                ))
+    
+            fig.update_layout(
+                title=title,
+                xaxis_title=xlabel,
+                yaxis_title=ylabel,
+                template="plotly_white",
+                legend_title="Variables",
+            )
+            return fig
+    
+        elif library == "matplotlib":
+            import matplotlib.pyplot as plt
+    
+            fig, ax = plt.subplots()
+    
+            linestyle = "-" if "lines" in mode else "None"
+            marker = "o" if "markers" in mode else None
+    
+            for col, name in zip(columns, traces_names):
+                ax.plot(
+                    df.index,
+                    df[col],
+                    label=name,
+                    linestyle=linestyle,
+                    marker=marker,
+                )
+    
+            ax.set(
+                title=title,
+                xlabel=xlabel,
+                ylabel=ylabel,
+            )
+            ax.legend(title="Variables")
+            fig.tight_layout()
+    
+            return fig
+    
+        else:
+            raise ValueError(
+                "library must be 'plotly' or 'matplotlib'."
+            )
+
 def download_template(template_path, target_path):
     """Copy a template file from ``kalden/templates`` to a target location.
 
