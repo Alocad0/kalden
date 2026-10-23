@@ -826,18 +826,14 @@ class Dfs0:
         return findings
 
     def plot(self, *args, **kwargs):
-        """
-        Plot DFs0 using the existing DataFrame plotting utility.
-    
-        Converts DFs0 to a pandas DataFrame before plotting.
-        """
-        from kalden.core.datascience.pandas import DataframeUtils
-    
-        return dataframeUtils.plot(
-            self.to_dataframe(),
-            *args,
-            **kwargs,
-    )
+      """Plot Dfs0 using DataframeUtils.plot()."""
+      from kalden.core.datascience.pandas.timeseries import DataFrameUtils
+  
+      return DataFrameUtils.plot(
+          self.to_dataframe(),
+          *args,
+          **kwargs,
+      )
 
 def download_template(template_path, target_path):
     """Copy a template file from ``kalden/templates`` to a target location.
