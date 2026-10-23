@@ -827,7 +827,7 @@ class Dfs0:
 
     def plot(self, *args, **kwargs):
       """Plot Dfs0 using DataframeUtils.plot()."""
-      from kalden.core.datascience.pandas.timeseries import DataFrameUtils
+      from kalden.core.datascience.pandas import DataFrameUtils
   
       return DataFrameUtils.plot(
           self.to_dataframe(),
