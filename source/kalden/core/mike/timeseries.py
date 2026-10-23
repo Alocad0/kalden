@@ -831,7 +831,7 @@ class Dfs0:
     
         Converts DFs0 to a pandas DataFrame before plotting.
         """
-        from kalden.core.datascience.pandas import dataframeUtils
+        from kalden.core.datascience.pandas import DataframeUtils
     
         return dataframeUtils.plot(
             self.to_dataframe(),
