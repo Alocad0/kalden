@@ -952,36 +952,114 @@ class DataFrameUtils:
         title: str = "",
         xlabel: str = "",
         ylabel: str = "",
+        library: str = "plotly",
     ):
-        """Plot selected DataFrame columns with Plotly."""
-        import plotly.graph_objects as go
-
+        """
+        Plot selected DataFrame columns using Plotly or Matplotlib.
+    
+        Parameters
+        ----------
+        df : pd.DataFrame
+            DataFrame whose index is used as the x-axis.
+        columns : list or str or None
+            Columns to plot. Defaults to all numeric columns.
+        mode : str
+            "lines", "markers", or "lines+markers".
+        traces_names : list or None
+            Custom names for plotted series.
+        title, xlabel, ylabel : str
+            Plot title and axis labels.
+        library : str
+            "plotly" (default) or "matplotlib".
+    
+        Returns
+        -------
+        plotly.graph_objects.Figure or matplotlib.figure.Figure
+        """
+        if columns is None or (
+            not isinstance(columns, str) and len(columns) == 0
+        ):
+            columns = df.select_dtypes(
+                include="number"
+            ).columns.tolist()
+        elif isinstance(columns, str):
+            columns = [columns]
+        else:
+            columns = list(columns)
+    
         if not columns:
-            columns = df.select_dtypes(include="number").columns.tolist()
-
-        fig = go.Figure()
-
-        for col_idx, col in enumerate(columns):
-            trace_name = traces_names[col_idx] if traces_names is not None else col
-            fig.add_trace(
-                go.Scatter(
-                    x=df.index,
-                    y=df[col],
-                    name=trace_name,
-                    connectgaps=False,
-                    mode=mode,
-                )
+            raise ValueError("No columns available to plot.")
+    
+        if mode not in ("lines", "markers", "lines+markers"):
+            raise ValueError(f"Invalid mode: {mode}")
+    
+        if traces_names is None:
+            traces_names = [str(col) for col in columns]
+        elif len(traces_names) != len(columns):
+            raise ValueError(
+                "traces_names must match the number of columns."
             )
-
-        fig.update_layout(
-            xaxis_title=xlabel,
-            yaxis_title=ylabel,
-            template="plotly_white",
-            legend_title="Variables",
-            title=title,
-        )
-
-        return fig
+    
+        library = library.lower()
+    
+        if library == "plotly":
+            import plotly.graph_objects as go
+    
+            fig = go.Figure()
+    
+            for col, name in zip(columns, traces_names):
+                fig.add_trace(
+                    go.Scatter(
+                        x=df.index,
+                        y=df[col],
+                        name=name,
+                        connectgaps=False,
+                        mode=mode,
+                    )
+                )
+    
+            fig.update_layout(
+                xaxis_title=xlabel,
+                yaxis_title=ylabel,
+                template="plotly_white",
+                legend_title="Variables",
+                title=title,
+            )
+    
+            return fig
+    
+        elif library == "matplotlib":
+            import matplotlib.pyplot as plt
+    
+            fig, ax = plt.subplots()
+    
+            linestyle = "-" if "lines" in mode else "None"
+            marker = "o" if "markers" in mode else None
+    
+            for col, name in zip(columns, traces_names):
+                ax.plot(
+                    df.index,
+                    df[col],
+                    label=name,
+                    linestyle=linestyle,
+                    marker=marker,
+                )
+    
+            ax.set(
+                title=title,
+                xlabel=xlabel,
+                ylabel=ylabel,
+            )
+            ax.legend(title="Variables")
+            fig.tight_layout()
+    
+            return fig
+    
+        else:
+            raise ValueError(
+                f"Unsupported library: {library}. "
+                "Choose 'plotly' or 'matplotlib'."
+            )
 
     @staticmethod
     def columns_to_numeric(df: pd.DataFrame, copy: bool = True) -> pd.DataFrame:
@@ -1159,7 +1237,6 @@ def df_split_column_equally(
         decimals=decimals,
     )
 
-
 def df_plot(
     df,
     columns=None,
@@ -1168,8 +1245,9 @@ def df_plot(
     title="",
     xlabel="",
     ylabel="",
+    library="plotly",
 ):
-    """Compatibility wrapper for ``DataFrameUtils.plot()``."""
+    """Compatibility wrapper for DataFrameUtils.plot()."""
     return DataFrameUtils.plot(
         df,
         columns=columns,
@@ -1178,8 +1256,8 @@ def df_plot(
         title=title,
         xlabel=xlabel,
         ylabel=ylabel,
+        library=library,
     )
-
 
 def df_columns_to_numeric(df, copy=True):
     """Compatibility wrapper for ``DataFrameUtils.columns_to_numeric()``."""
