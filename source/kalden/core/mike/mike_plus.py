@@ -311,6 +311,18 @@ class MPlusTopology:
             )
         ].copy()
 
+        def select_upstream_assets(assets):
+            from_col = resolve_column(assets, "FromNodeID")
+            to_col = resolve_column(assets, "ToNodeID")
+
+            return assets.loc[
+                assets[from_col].isin(upstream_node_ids)
+                & assets[to_col].isin(upstream_node_ids)
+            ].copy()
+
+        upstream_pumps = select_upstream_assets(self.pumps)
+        upstream_weirs = select_upstream_assets(self.weirs)
+
         # Catchment connections entering the upstream network.
         upstream_connections = self.catchment_connections.loc[
             self.catchment_connections[
@@ -330,17 +342,23 @@ class MPlusTopology:
             ].isin(catchment_ids)
         ].copy()
 
-        # Assumes a projected CRS whose units are metres,
-        # e.g. EPSG:2056.
-        total_area_ha = (
-            upstream_catchments.geometry.area.sum()
-            / 10_000
+        # User area takes precedence over polygon area.
+        upstream_catchments["effective_area_ha"] = (
+            MPlusModel._catchment_areas_ha(
+                upstream_catchments
+            )["effective_area_ha"]
+        )
+
+        total_area_ha = float(
+            upstream_catchments["effective_area_ha"].sum()
         )
 
         return UpstreamResult(
             target_node_id=target_node_id,
             nodes=upstream_nodes,
             links=upstream_links,
+            pumps=upstream_pumps,
+            weirs=upstream_weirs,
             catchments=upstream_catchments,
             catchment_connections=upstream_connections,
             total_area_ha=total_area_ha,
@@ -351,6 +369,8 @@ class UpstreamResult:
     target_node_id: str
     nodes: gpd.GeoDataFrame
     links: gpd.GeoDataFrame
+    pumps: gpd.GeoDataFrame
+    weirs: gpd.GeoDataFrame
     catchments: gpd.GeoDataFrame
     catchment_connections: pd.DataFrame
     total_area_ha: float
@@ -499,6 +519,181 @@ class MPlusModel:
                 f"A metre-based CRS is required for {purpose}; received "
                 f"coordinate unit(s): {sorted(set(non_metric_axes))}."
             )
+    
+    @staticmethod
+    def _catchment_areas_ha(
+        catchments_gdf: gpd.GeoDataFrame,
+    ) -> pd.DataFrame:
+        """
+        Calculate catchment areas in hectares.
+
+        Priority:
+        1. User-specified MIKE+ Area attribute.
+        2. Geometric polygon area when Area is NaN.
+
+        Requires a projected CRS with metre units.
+        """
+
+        MPlusModel._require_active_geometry(
+            catchments_gdf, "catchments_gdf"
+        )
+        MPlusModel._require_projected_crs(
+            catchments_gdf, "catchment area"
+        )
+
+        # Geometric area in hectares.
+        valid_geometry = (
+            catchments_gdf.geometry.notna()
+            & ~catchments_gdf.geometry.is_empty
+        )
+
+        geometric_area_ha = (
+            catchments_gdf.geometry.area / 10_000
+        ).where(valid_geometry)
+
+        # User-specified MIKE+ area is already in hectares.
+        area_columns = [
+            col for col in catchments_gdf.columns
+            if col.casefold() == "area"
+        ]
+
+        if area_columns:
+            area_col = resolve_column(
+                catchments_gdf, "Area"
+            )
+            user_area_ha = pd.to_numeric(
+                catchments_gdf[area_col],
+                errors="coerce",
+            )
+        else:
+            user_area_ha = pd.Series(
+                float("nan"),
+                index=catchments_gdf.index,
+                dtype=float,
+            )
+
+        # User area takes precedence, including explicit zero.
+        effective_area_ha = user_area_ha.fillna(
+            geometric_area_ha
+        )
+
+        return pd.DataFrame({
+            "user_area_ha": user_area_ha,
+            "geometric_area_ha": geometric_area_ha,
+            "effective_area_ha": effective_area_ha,
+        }, index=catchments_gdf.index)
+    
+    def validate_catchments_area(
+        self,
+        catchments_gdf: gpd.GeoDataFrame | None = None,
+        *,
+        scenario: str = "Base",
+        crs: str = "EPSG:2056",
+        tolerance_ha: float = 0.001,
+    ) -> pd.DataFrame:
+        """
+        Compare user-specified catchment areas with geometric areas.
+
+        Returns catchments having an explicit Area override,
+        plus catchments without either usable area.
+
+        Differences are reported, not treated as fatal errors.
+        """
+
+        if not math.isfinite(tolerance_ha) or tolerance_ha < 0:
+            raise ValueError(
+                "tolerance_ha must be finite and non-negative."
+            )
+
+        if catchments_gdf is None:
+            catchments_gdf = self.fetch_spatial_table(
+                "msm_Catchment",
+                scenario=scenario,
+                crs=crs,
+            )
+
+        areas = self._catchment_areas_ha(
+            catchments_gdf
+        )
+
+        muid_col = resolve_column(
+            catchments_gdf, "MUID"
+        )
+
+        report = areas.copy()
+
+        report.insert(
+            0,
+            "MUID",
+            catchments_gdf[muid_col],
+        )
+
+        report["difference_ha"] = (
+            report["user_area_ha"]
+            - report["geometric_area_ha"]
+        )
+
+        report["difference_pct"] = (
+            100 * report["difference_ha"]
+            / report["geometric_area_ha"].replace(
+                0, float("nan")
+            )
+        )
+
+        user = report["user_area_ha"]
+        geom = report["geometric_area_ha"]
+        diff = report["difference_ha"]
+
+        report["status"] = "geometry_only"
+
+        report.loc[
+            user.notna()
+            & geom.notna()
+            & (diff.abs() <= tolerance_ha),
+            "status",
+        ] = "matches_geometry"
+
+        report.loc[
+            user.notna()
+            & geom.notna()
+            & (diff > tolerance_ha),
+            "status",
+        ] = "exceeds_geometry"
+
+        report.loc[
+            user.notna()
+            & geom.notna()
+            & (diff < -tolerance_ha),
+            "status",
+        ] = "override_smaller"
+
+        report.loc[
+            user.notna() & geom.isna(),
+            "status",
+        ] = "missing_geometry"
+
+        report.loc[
+            user.isna() & geom.isna(),
+            "status",
+        ] = "missing_area"
+
+        report.loc[
+            user.eq(0),
+            "status",
+        ] = "zero_area"
+
+        report.loc[
+            user.lt(0),
+            "status",
+        ] = "negative_area"
+
+        # Hide the ordinary catchments with no custom Area.
+        report = report.loc[
+            user.notna()
+            | geom.isna()
+        ].copy()
+
+        return report.reset_index(drop=True)
 
     @staticmethod
     def _parse_scenario_alternatives(
@@ -518,48 +713,50 @@ class MPlusModel:
     def _build_topology_graph(
         nodes: gpd.GeoDataFrame,
         links: gpd.GeoDataFrame,
+        pumps: gpd.GeoDataFrame,
+        weirs: gpd.GeoDataFrame,
     ) -> nx.MultiDiGraph:
-        """Build a directed hydraulic graph from resolved MIKE+ nodes and links."""
-
-        node_id_column = resolve_column(
-            nodes,
-            "MUID",
-        )
-        link_id_column = resolve_column(
-            links,
-            "MUID",
-        )
-        from_node_column = resolve_column(
-            links,
-            "FromNodeID",
-        )
-        to_node_column = resolve_column(
-            links,
-            "ToNodeID",
-        )
+        """Build a directed graph including links, pumps and weirs."""
 
         graph = nx.MultiDiGraph()
 
-        graph.add_nodes_from(
-            nodes[node_id_column].dropna()
-        )
+        node_col = resolve_column(nodes, "MUID")
+        node_ids = set(nodes[node_col].dropna())
 
-        valid_links = links.dropna(
-            subset=[
-                from_node_column,
-                to_node_column,
-            ]
-        )
+        graph.add_nodes_from(node_ids)
 
-        for index, row in valid_links.iterrows():
-            link_id = row[link_id_column]
+        for asset_type, assets in (
+            ("link", links),
+            ("pump", pumps),
+            ("weir", weirs),
+        ):
+            id_col = resolve_column(assets, "MUID")
+            from_col = resolve_column(assets, "FromNodeID")
+            to_col = resolve_column(assets, "ToNodeID")
 
-            graph.add_edge(
-                row[from_node_column],
-                row[to_node_column],
-                key=link_id if pd.notna(link_id) else index,
-                muid=link_id,
-            )
+            for index, row in assets.iterrows():
+                from_node = row[from_col]
+                to_node = row[to_col]
+
+                if pd.isna(from_node) or pd.isna(to_node):
+                    continue
+
+                # Ignore connections outside the resolved node network.
+                if from_node not in node_ids or to_node not in node_ids:
+                    continue
+
+                asset_id = row[id_col]
+
+                graph.add_edge(
+                    from_node,
+                    to_node,
+                    key=(
+                        asset_type,
+                        asset_id if pd.notna(asset_id) else index,
+                    ),
+                    muid=asset_id,
+                    asset_type=asset_type,
+                )
 
         return graph
 
@@ -950,6 +1147,8 @@ class MPlusModel:
         graph = self._build_topology_graph(
             nodes,
             links,
+            pumps,
+            weirs,
         )
 
         return MPlusTopology(
@@ -1459,7 +1658,7 @@ class MPlusModel:
         return LineString([catchment_geometry.centroid, node_geometry])
 
     @staticmethod
-    def validate_catchment_connections(
+    def validate_catchments_connections(
         catchments_gdf: pd.DataFrame,
         catchment_connections_gdf: pd.DataFrame,
         *,
@@ -1688,16 +1887,14 @@ class MPlusModel:
             "catchment area",
         )
 
-        valid_catchment_geometry = (
-            upstream_catchments.geometry.notna()
-            & ~upstream_catchments.geometry.is_empty
+        upstream_catchments["effective_area_ha"] = (
+            MPlusModel._catchment_areas_ha(
+                upstream_catchments
+            )["effective_area_ha"]
         )
-        total_area_ha = (
-            upstream_catchments.loc[
-                valid_catchment_geometry,
-                upstream_catchments.geometry.name,
-            ].area.sum()
-            / 10_000
+
+        total_area_ha = float(
+            upstream_catchments["effective_area_ha"].sum()
         )
 
         upstream_link_mask = (
@@ -1888,16 +2085,18 @@ class MPlusModel:
             catchment_view[connection_node_column].dropna()
         )
 
-        valid_catchment_geometry = (
-            catchment_view.geometry.notna()
-            & ~catchment_view.geometry.is_empty
-        )
-        catchment_view = catchment_view.loc[
-            valid_catchment_geometry
-        ].copy()
+        # Prefer user-defined Area; fallback to geometry.
         catchment_view["_kalden_area_ha"] = (
-            catchment_view.geometry.area / 10_000
+            MPlusModel._catchment_areas_ha(
+                catchment_view
+            )["effective_area_ha"]
         )
+
+        # Retain catchments with a usable area,
+        # even if geometry is missing.
+        catchment_view = catchment_view.loc[
+            catchment_view["_kalden_area_ha"].notna()
+        ].copy()
 
         direct_area_by_node = catchment_view.groupby(
             connection_node_column,
