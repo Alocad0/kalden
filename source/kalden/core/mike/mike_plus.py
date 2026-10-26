@@ -243,11 +243,11 @@ class MPlusTopology:
     catchment_connections: pd.DataFrame
     graph: nx.MultiDiGraph
 
-    def upstream(
+    def _upstream_node_ids(
         self,
         target_node_id: str,
-    ) -> UpstreamResult:
-        """Return the hydraulic network and catchments upstream of a node."""
+    ) -> set:
+        """Return all contributing nodes, including the target."""
 
         if target_node_id not in self.graph:
             raise ValueError(
@@ -255,13 +255,34 @@ class MPlusTopology:
                 f"in scenario {self.scenario!r}."
             )
 
-        # Hydraulic nodes contributing to the target.
-        upstream_node_ids = (
-            nx.ancestors(
-                self.graph,
-                target_node_id,
-            )
+        return (
+            nx.ancestors(self.graph, target_node_id)
             | {target_node_id}
+        )
+
+    def upstream(
+        self,
+        target_node_id: str,
+    ) -> UpstreamResult:
+        """Return the hydraulic network and catchments upstream of a node."""
+
+        # if target_node_id not in self.graph:
+        #     raise ValueError(
+        #         f"Node {target_node_id!r} does not exist "
+        #         f"in scenario {self.scenario!r}."
+        #     )
+
+        # # Hydraulic nodes contributing to the target.
+        # upstream_node_ids = (
+        #     nx.ancestors(
+        #         self.graph,
+        #         target_node_id,
+        #     )
+        #     | {target_node_id}
+        # )
+
+        upstream_node_ids = self._upstream_node_ids(
+            target_node_id
         )
 
         # Resolve relevant column names.
@@ -363,6 +384,205 @@ class MPlusTopology:
             catchment_connections=upstream_connections,
             total_area_ha=total_area_ha,
         )
+    
+    def batch_upstream(
+        self,
+        export_path: str | PathLike[str] | None = None,
+        *,
+        show_progress: bool = True,
+        verbose: bool = True,
+    ) -> pd.DataFrame:
+        """
+        Summarize upstream topology for every node.
+
+        Uses the existing scenario-resolved graph, including
+        links, pumps and weirs.
+
+        Catchment areas use the MIKE+ Area override when provided,
+        otherwise geometric area.
+
+        Catchments connected to multiple contributing nodes
+        are counted only once per upstream network.
+        """
+        MPlusModel._require_projected_crs(
+            self.links, "link length"
+        )
+
+        node_col = resolve_column(self.nodes, "MUID")
+        catch_col = resolve_column(self.catchments, "MUID")
+        conn_node_col = resolve_column(
+            self.catchment_connections, "NodeID"
+        )
+        conn_catch_col = resolve_column(
+            self.catchment_connections, "CatchID"
+        )
+
+        # 1. Calculate effective catchment areas once.
+        catchment_ids = self.catchments[catch_col]
+
+        if catchment_ids.dropna().duplicated().any():
+            raise ValueError(
+                "Catchment MUID values must be unique."
+            )
+
+        effective_areas = MPlusModel._catchment_areas_ha(
+            self.catchments
+        )["effective_area_ha"].fillna(0.0)
+
+        area_by_catchment = {
+            catchment_id: float(area)
+            for catchment_id, area in zip(
+                catchment_ids, effective_areas
+            )
+            if pd.notna(catchment_id)
+        }
+
+        # 2. Index catchment connections by node.
+        catchments_by_node: dict[Any, set[Any]] = {}
+
+        for node_id, catchment_id in self.catchment_connections[
+            [conn_node_col, conn_catch_col]
+        ].itertuples(index=False, name=None):
+
+            if (
+                pd.notna(node_id)
+                and pd.notna(catchment_id)
+                and catchment_id in area_by_catchment
+            ):
+                catchments_by_node.setdefault(
+                    node_id, set()
+                ).add(catchment_id)
+
+        # 3. Index pipe lengths by graph edge.
+        link_id_col = resolve_column(self.links, "MUID")
+        from_col = resolve_column(self.links, "FromNodeID")
+        to_col = resolve_column(self.links, "ToNodeID")
+
+        length_by_edge = {}
+
+        for (index, link), length in zip(
+            self.links.iterrows(),
+            self.links.geometry.length,
+        ):
+            from_node = link[from_col]
+            to_node = link[to_col]
+
+            if pd.isna(from_node) or pd.isna(to_node):
+                continue
+
+            asset_id = link[link_id_col]
+            edge_key = (
+                "link",
+                asset_id if pd.notna(asset_id) else index,
+            )
+
+            length_by_edge[
+                (from_node, to_node, edge_key)
+            ] = float(length) if pd.notna(length) else 0.0
+
+        # 4. Traverse the graph for every node.
+        node_ids = (
+            self.nodes[node_col]
+            .dropna()
+            .drop_duplicates()
+        )
+
+        iterator = tqdm(
+            node_ids,
+            desc=f"Upstream ({self.scenario})",
+            disable=not show_progress,
+        )
+
+        records = []
+
+        for target in iterator:
+            contributing_nodes = self._upstream_node_ids(
+                target
+            )
+
+            # Unique contributing catchments.
+            contributing_catchments = set()
+
+            for node_id in contributing_nodes:
+                contributing_catchments.update(
+                    catchments_by_node.get(node_id, ())
+                )
+
+            # Count hydraulic assets and sum pipe lengths.
+            pipe_length = 0.0
+            pump_count = 0
+            weir_count = 0
+
+            upstream_graph = self.graph.subgraph(
+                contributing_nodes
+            )
+
+            for source, destination, key, data in (
+                upstream_graph.edges(keys=True, data=True)
+            ):
+                asset_type = data.get("asset_type")
+
+                if asset_type == "link":
+                    pipe_length += length_by_edge.get(
+                        (source, destination, key), 0.0
+                    )
+
+                elif asset_type == "pump":
+                    pump_count += 1
+
+                elif asset_type == "weir":
+                    weir_count += 1
+
+            records.append({
+                "NodeID": target,
+                "n_upstream_nodes": len(contributing_nodes) - 1,
+                "n_upstream_catchments": len(
+                    contributing_catchments
+                ),
+                "upstream_pipe_length_m": pipe_length,
+                "upstream_catchment_area_ha": sum(
+                    area_by_catchment[cid]
+                    for cid in contributing_catchments
+                ),
+                "n_upstream_pumps": pump_count,
+                "n_upstream_weirs": weir_count,
+            })
+
+        # 5. Return DataFrame, optionally export to Excel.
+        columns = [
+            "NodeID",
+            "n_upstream_nodes",
+            "n_upstream_catchments",
+            "upstream_pipe_length_m",
+            "upstream_catchment_area_ha",
+            "n_upstream_pumps",
+            "n_upstream_weirs",
+        ]
+
+        result = pd.DataFrame.from_records(
+            records, columns=columns
+        )
+
+        if export_path is not None:
+            output_path = Path(export_path).expanduser()
+            output_path.parent.mkdir(
+                parents=True, exist_ok=True
+            )
+
+            result.to_excel(
+                output_path,
+                sheet_name="network analysis",
+                index=False,
+            )
+
+        if verbose:
+            print(
+                f"Batch upstream: {len(result)} nodes, "
+                f"scenario {self.scenario!r}"
+            )
+
+        return result
+
 
 @dataclass
 class UpstreamResult:
@@ -1817,6 +2037,15 @@ class MPlusModel:
             Dictionary containing upstream nodes, upstream links, upstream
             catchments, and total catchment area in hectares.
         """
+
+        # warnings.warn(
+        #     "This method is deprecated. Use "
+        #     "model.fetch_topology(scenario).upstream(node_id) "
+        #     "or topology.batch_upstream() instead.",
+        #     DeprecationWarning,
+        #     stacklevel=2,
+        # )
+
         MPlusModel._require_active_geometry(
             catchment_connections_gdf,
             "catchment_connections_gdf",
@@ -2037,6 +2266,15 @@ class MPlusModel:
             DataFrame containing upstream node count, link length, catchment
             count, and catchment area for each node.
         """
+
+        # warnings.warn(
+        #     "This method is deprecated. Use "
+        #     "model.fetch_topology(scenario).upstream(node_id) "
+        #     "or topology.batch_upstream() instead.",
+        #     DeprecationWarning,
+        #     stacklevel=2,
+        # )
+
         MPlusModel._require_active_geometry(
             catchment_connections_gdf,
             "catchment_connections_gdf",
