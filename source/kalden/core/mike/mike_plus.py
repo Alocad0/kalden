@@ -2038,13 +2038,13 @@ class MPlusModel:
             catchments, and total catchment area in hectares.
         """
 
-        # warnings.warn(
-        #     "This method is deprecated. Use "
-        #     "model.fetch_topology(scenario).upstream(node_id) "
-        #     "or topology.batch_upstream() instead.",
-        #     DeprecationWarning,
-        #     stacklevel=2,
-        # )
+        warnings.warn(
+            "This method is deprecated. Use "
+            "model.fetch_topology(scenario).upstream(node_id) "
+            "or topology.batch_upstream() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         MPlusModel._require_active_geometry(
             catchment_connections_gdf,
@@ -2267,13 +2267,13 @@ class MPlusModel:
             count, and catchment area for each node.
         """
 
-        # warnings.warn(
-        #     "This method is deprecated. Use "
-        #     "model.fetch_topology(scenario).upstream(node_id) "
-        #     "or topology.batch_upstream() instead.",
-        #     DeprecationWarning,
-        #     stacklevel=2,
-        # )
+        warnings.warn(
+            "This method is deprecated. Use "
+            "model.fetch_topology(scenario).upstream(node_id) "
+            "or topology.batch_upstream() instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
 
         MPlusModel._require_active_geometry(
             catchment_connections_gdf,
